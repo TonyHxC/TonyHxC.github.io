@@ -1,0 +1,213 @@
+var YPCA = window.YPCA || {};
+
+YPCA.Utils = (function ($) {
+	"use strict";
+
+	var utils = {
+		getMapsConfig: function() {
+			var mapsConfig = utils.parseJSONGracefully($('.jsMapsApiConfig').html());
+
+			if(Object.keys(mapsConfig).length > 0) {
+				return mapsConfig;
+			}
+
+			return null;
+		},
+		isUndefined: function (obj) {
+			return typeof obj === 'undefined';
+		},
+		isDefined: function (obj) {
+			return typeof obj !== 'undefined';
+		},
+        queryParametersToJSON: function(loc) {
+            var jsonNodes = {},
+                result = false,
+                param,
+                params = loc.slice(loc.indexOf('?') + 1).split('&');
+
+            if (loc.indexOf('?') !== -1) {
+                for (var i = 0; i < params.length; i++) {
+                    param = params[i].split('=');
+                    jsonNodes[param[0]] = decodeURIComponent(param[1] || '');
+                }
+
+                result = JSON.parse(JSON.stringify(jsonNodes));
+            }
+
+            return result;
+        },
+        parseJSONGracefully: function(jsonString) {
+            try {
+                return JSON.parse(jsonString);
+            } catch (e) {
+                return {};
+            }
+        },
+        parseJSON: function(jsonString) {
+            var json;
+            try {
+                return JSON.parse(jsonString);
+            } catch (e) {
+                console.log(e.toString());
+            }
+
+            return json;
+        },
+		publisher: {
+			subscribers: {
+				any: []
+			},
+			subscribe: function (type, fn, context) {
+				type = type || 'any';
+				fn = typeof fn === "function" ? fn : context[fn];
+
+				if (typeof this.subscribers[type] === "undefined") {
+					this.subscribers[type] = [];
+				}
+				this.subscribers[type].push({fn: fn, context: context || this});
+
+			},
+			remove: function (type, fn, context) {
+				this.visitSubscribers('unsubscribe', type, fn, context);
+			},
+			publish: function (type, publication) {
+				//console.log('PubSub - publish: ' + type + ' ' + publication);
+
+				this.visitSubscribers('publish', type, publication);
+			},
+			visitSubscribers: function (action, type, arg, context) {
+				var pubtype = type || 'any',
+					subscribers = this.subscribers[pubtype],
+					i,
+					max = subscribers ? subscribers.length : 0;
+
+				for (i = 0; i < max; i += 1) {
+					if (action === 'publish') {
+						subscribers[i].fn.call(subscribers[i].context, arg);
+					} else if (subscribers[i].fn === arg && subscribers[i].context === context) {
+                        subscribers.splice(i, 1);
+                    }
+				}
+			}
+		},
+		makePublisher: function (o) {
+			var i;
+			for (i in YPCA.Utils.publisher) {
+				if (YPCA.Utils.publisher.hasOwnProperty(i) && typeof YPCA.Utils.publisher[i] === "function") {
+					o[i] = YPCA.Utils.publisher[i];
+				}
+			}
+			o.subscribers = {any: []};
+		},
+
+        namespace: function (ns_string) {
+            var parts = ns_string.split('.'),
+				parent = YPCA,
+				i;
+			if (parts[0] === "YPCA") {
+				parts = parts.slice(1);
+			}
+
+			for (i = 0; i < parts.length; i += 1) {
+				if (typeof parent[parts[i]] === "undefined") {
+					parent[parts[i]] = {};
+				}
+				parent = parent[parts[i]];
+			}
+			return parent;
+		},
+		urlParamHash: function (name, str) {
+			var results,
+                str = str || window.location.href;
+
+			if (name === '#') {
+				results = new RegExp('[\\#]([^?#]*)').exec(str);
+			} else {
+				results = new RegExp('[\\?&]' + name + '=([^&#]*)').exec(str);
+			}
+
+			return (results !== null) ? decodeURIComponent(results[1]) : 0;
+		},
+		isLocalStorageNameSupported : function() {
+			var testKey = 'test', storage = window.sessionStorage;
+			try
+			{
+				storage.setItem(testKey, '1');
+				storage.removeItem(testKey);
+				return true;
+			}
+			catch (error)
+			{
+				return false;
+			}
+		},
+        storageAPI: (function () {
+            var get = function get(type, name) {
+                    return type === 'local' ? window.localStorage.getItem(name) : window.sessionStorage.getItem(name);
+                },
+
+                getJSON = function get(type, name) {
+                    return _parseJSON(name, type === 'local' ? window.localStorage.getItem(name) : window.sessionStorage.getItem(name));
+                },
+
+                set = function set(type, name, data) {
+                    if (data instanceof Object) { 
+                        data = JSON.stringify(data);
+                    }
+
+
+					if (type === 'local') {
+						window.localStorage.setItem(name, data);
+					} else if(utils.isLocalStorageNameSupported()){
+						window.sessionStorage.setItem(name, data);
+					}
+
+                },
+
+                remove = function clear(name) {
+                    window.sessionStorage.removeItem(name);
+                },
+
+                _parseJSON = function(name, values) {
+                    try {
+                        values = JSON.parse(values);
+                        if (values instanceof Object) {
+                            if (jQuery.isEmptyObject(values)) {
+                                remove(name);
+                                values = null;
+                            }
+                        }
+                    } catch (e) {
+                        remove(name);
+                        console.log('Error parsing JSON');
+                        values = null;
+                    }
+
+                    return values;
+                };
+
+            return {
+                get: get,
+                getJSON: getJSON,
+                set: set,
+                remove: remove
+            };
+        }())
+    };
+
+	return {
+		getMapsConfig: utils.getMapsConfig,
+		isUndefined: utils.isUndefined,
+		isDefined: utils.isDefined,
+		publisher: utils.publisher,
+		makePublisher: utils.makePublisher,
+		namespace: utils.namespace,
+		urlParamHash: utils.urlParamHash,
+        storageAPI: utils.storageAPI,
+		queryParametersToJSON: utils.queryParametersToJSON,
+        parseJSONGracefully: utils.parseJSONGracefully,
+        parseJSON: utils.parseJSON
+	};
+}(window.jQuery));
+
+YPCA.Utils.makePublisher(YPCA);

@@ -1,0 +1,376 @@
+"use strict";
+var YPCA = window.YPCA || {};
+
+ypg_namespace('YPCA.Maps.osm');
+
+YPCA.Maps.osm = {
+cache: {},
+doAnalytic: false,
+settings: {
+	api: {},
+	fetchDots: false,
+	fetchListingDetailsUrl: '/search/listingDetails/',
+	mapContainer: "ypgmap",
+	pin: {
+		alt: {
+			icon: null,
+			width: null,
+			height: null,
+			offsetHorizontal: null
+		},
+		defaultPin: 'main',
+		main: {
+			icon: null,
+			width: null,
+			height: null,
+			offsetHorizontal: null
+		},
+		max: 10
+	},
+	searchFromHereService: 'OSP',
+	showLabelOnMarker: false
+},
+aGroup: null,
+aGroupPin: [],
+aGroupMarkers: [],
+attributionControl: null,
+map: null,
+data: null,
+dotPin: null,
+tileLayer: null,
+
+_init: function () {
+	this._setConfig();
+	this._getData();
+	this._getOriginalMapBounds();
+	this._openMarker();
+	this._fetchDots();
+	this._setMapEventListeners();
+},
+
+_addMarkersEventListener: function(marker, data, pinType) {
+	var that = this;
+	if(data.properties.name != "") {
+		marker.bindPopup("<h3>" + data.properties.name + "</h3>").openPopup();
+	}
+	
+
+},
+
+_boundsParam: function (params) {
+	if(YPCA.Utils.isUndefined(params) || params === '') {
+		if (YPCA.Utils.isUndefined(this.boundsCoords) || this.boundsCoords === '' || this.boundsCoords === null) {
+			this.boundsCoords = this._mapBoundsToUrl();
+		}
+	} else {
+		this.boundsCoords = params;
+	}
+
+	return this.boundsCoords;
+},
+
+_setMapEventListeners: function(){
+   var that = this;
+
+	if (this.settings.searchFromHereService === 'DCR') {
+		this.map.once('dragend zoomend', function () {
+		});
+	}
+},
+
+
+_clickedPrimaryTypeMarkers: function (e, data, pinType) {
+	
+},
+
+
+_clickedSecondaryTypeMarkers: function (e, data, pinType) {
+	
+},
+
+
+_createPinMain: function(pinIndex, showLabelOnMarker, isClickable) {
+	var pinHtml = '',
+		clickableClass = !isClickable ? ' ypPinOsm__notClickable' : '';
+
+	if(showLabelOnMarker){
+		pinHtml = this._createPinHtml('<div class="ypPinOsm"><span class="">{{index}}</span></div>', {index:pinIndex});
+	}else {
+		pinHtml = this._createPinHtml('<div class="ypPinOsm' + clickableClass + '"></div>');
+	}
+
+	return L.divIcon({
+		html: pinHtml,
+		iconSize: [YPCA.Maps.customProps.pin.main.width, YPCA.Maps.customProps.pin.main.height], 
+		iconAnchor: L.point(YPCA.Maps.customProps.pin.main.width / 2, YPCA.Maps.customProps.pin.main.height), 
+		popupAnchor: [0, -35], 
+		className: ''
+	});
+},
+
+_createPinHtml: function (templ, data) {
+	var pinHtml = templ;
+
+	if (YPCA.Utils.isDefined(data)) {
+		for (var prop in data) {
+			var regex = new RegExp('{{' + prop + '}}', "g")
+
+			pinHtml = pinHtml.replace(regex, data[prop]);
+		}
+	}
+
+	return pinHtml;
+},
+
+
+_createPinDots: function() {
+	return L.icon({
+		iconUrl: YPCA.Maps.customProps.pin.alt.icon,
+		iconSize: [YPCA.Maps.customProps.pin.alt.width, YPCA.Maps.customProps.pin.alt.height], 
+		iconAnchor: L.point(YPCA.Maps.customProps.pin.alt.width / 2, YPCA.Maps.customProps.pin.alt.height), 
+		popupAnchor: [0, -15] 
+	});
+},
+
+_fetchDots: function () {
+	var self = YPCA.Maps.osm;
+	if (self.settings.fetchDots) {
+		YPCA.MapServices.fetchDots(function (data) {
+			self._setPins(data.features, 'dots');
+		}, 'osm');
+	}
+},
+
+_getData: function (fromSerp) {
+	if(fromSerp === true) {
+		this.map.removeLayer(this.aGroup);
+	}
+
+	if(YP.Utils.isDefined(YPCA.Maps.customProps.pin.alt)){
+		this.dotPin = this._createPinDots();
+	}
+
+	this.data = YPCA.Maps.utils.convertDataToJSON(YPCA.Maps.utils.retrieveDataFromDOM());
+
+	this._initMap();
+},
+
+
+_getMapBounds: function() {
+	return this.map.getBounds();
+},
+
+_getOriginalMapBounds: function () {
+	var that = this;
+
+	this.tileLayer.on('tileload', function () {
+		that.originalMapBounds = that._mapBoundsToUrl();
+	});
+},
+
+
+_initMap: function () {
+	if(this.map === null) {
+		this.map = L.map(this.settings.mapContainer);
+		this._setView(this.data.mapCenter, 4);
+		this._setCopyright();
+	}
+
+	this.tileLayer.addTo(this.map);
+
+	if(this.data.geoJson.features.length > 0) {
+		this._setPins(this.data.geoJson.features, 'enum');
+		this._setMapCenter();
+		if(YP.Utils.isDefined(this.settings.zoom)) {
+			this.map.setZoom(this.settings.zoom);
+		}
+	} else {
+		this._setMapPositionNoResults();
+	}
+
+	jQuery(document).trigger('MapLeaflet/Loaded');
+},
+
+
+_mapBoundsToUrl: function () {
+	var b = this._getMapBounds();
+
+	return '&trGeo=' + b._northEast.lat + ',' + b._northEast.lng + '&blGeo=' + b._southWest.lat + ',' + b._southWest.lng;
+},
+
+_openMarker: function () {
+	if (this.settings.showInfoWindow === 'self' && YPCA.Utils.urlParamHash('listId', window.location.href)) {
+		var that = this;
+		that.aGroupMarkers[0].fireEvent('click');
+	}
+},
+
+_refreshAjaxPaginationSERP: function() {
+	this._hideRedoSearch();
+	this._removeMarkers();
+	this._getData(true);
+	this._fetchDots();
+},
+
+_removeMarkers : function(){
+	for(var i=0;i<this.aGroupMarkers.length;i++) {
+		this.map.removeLayer(this.aGroupMarkers[i]);
+	}
+},
+
+_setConfig: function() {
+	var mapApiConfig = YPCA.Utils.getMapsConfig();
+
+	if(Object.keys(mapApiConfig).length > 0) {
+		jQuery.extend(true, this.settings.api, YPCA.Utils.getMapsConfig());
+		this._setTiles();
+	}
+
+	if (YPCA.Maps.customProps) {
+		jQuery.extend(true, this.settings, YPCA.Maps.customProps);
+	}
+},
+
+_setCopyright: function() {
+	var copyright = '<a title="A JS library for interactive maps" target="_blank"  href="http://leafletjs.com">Leaflet</a>' + ' | &copy; <a class="map-leaflet__copyright" target="_blank" href="http://osm.org/copyright">OpenStreetMap</a>';
+
+	this.map.attributionControl.setPrefix(copyright);
+},
+
+_setMapPositionNoResults: function () {
+	var that = this,
+		sessionBounds,
+		bounds;
+
+	if (that.data.geoJson.features.length === 0) {
+		sessionBounds = YPCA.Utils.storageAPI.getJSON('session', this.MAP_BOUNDS_SESSION_NAME) || {};
+		bounds = new L.LatLngBounds();
+
+		bounds.extend(new L.LatLng(sessionBounds.blLat || 34.68980683791515, sessionBounds.blLng || -127.00317393749998));
+		bounds.extend(new L.LatLng(sessionBounds.trLat || 67.78542843718334, sessionBounds.trLng || -68.99536143749998));
+
+		that.map.fitBounds(bounds);
+
+		YPCA.publish('Map/NoResults');
+	}
+},
+_setPins: function(data, pinType) {
+	var aGroupPin = [],
+		aLatLong = [],
+		that = this;
+
+	for (var i = 0; i < data.length; i++) {
+		var pinIndex = parseInt(data[i].properties.pinIndex, 10),
+			max = this.settings.pin.max;
+
+		max += YPCA.Utils.urlParamHash('listId', window.location.href) ? 1 : 0;
+
+		var pin;
+		if (this.settings.specialPin && i <= this.settings.pin.max) {
+
+			if (i <= this.settings.pin.max) {
+				var selector = this.settings.checkIfPinIsSpecialFlag.replace('{{index}}', i),
+					$elem = jQuery(selector);
+
+				var pinHtml = this._createPinHtml(this.settings.specialPinTmpl, $elem.data());
+
+				pin = L.divIcon({
+					html       : pinHtml,
+					iconSize   : [this.settings.specialPinSize.width, this.settings.specialPinSize.height], 
+					iconAnchor : L.point(this.settings.specialPinSize.width / 2, this.settings.specialPinSize.height), 
+					popupAnchor: [0, -62], 
+					className  : ''
+				});
+
+			}
+		} else if ((pinIndex !== -1 && pinIndex <= max && this.settings.pin.defaultPin === 'main') || (data.length === 1 && pinType === 'enum')) {
+			pin = this._createPinMain(pinIndex, pinIndex !== -1 ? this.settings.showLabelOnMarker : false, true);
+		} else {
+			pin = this.dotPin;
+		}
+
+		var address;
+		if (jQuery('.jsMapResource').length > 1 && i === 0) {
+			try {
+				address = JSON.parse(jQuery('.jsMapResource').eq(1).html()).yp_address.street;
+			} catch (e) {
+			}
+
+			if (address) {
+				pin = this._createPinMain(pinIndex, this.settings.showLabelOnMarker, false);
+			}
+		}
+
+		if(this.settings.overwridePinIndex){
+			data[i].properties.pinIndex = i +1;
+		}
+
+		var markers = new L.marker(data[i].geometry.coordinates, { icon: pin });
+		markers.setZIndexOffset(1000 - i);
+
+		this._addMarkersEventListener(markers, data[i], pinType);
+
+		this.aGroupMarkers.push(markers);
+		
+		aGroupPin.push(markers);
+		aLatLong.push(data[i].geometry.coordinates);
+	}
+
+	this.aGroup = new L.featureGroup(aGroupPin);
+	this.aGroup.addTo(this.map);
+	this.aGroupPin = new L.LatLngBounds(aLatLong);
+
+	if (pinType === 'enum') {
+		YPCA.publish('Map/Markers/Primary/Set', {data: aGroupPin, pinType: 'enum', resetMarkers: true, map: that.map, markers: aGroupPin});
+	} else {
+		YPCA.publish('Map/Markers/Secondary/Set', {data: this.markers, pinType: 'dots', resetMarkers: false});
+	}
+},
+
+_setTeaserPopupContent: function(marker, data) {
+	marker.bindPopup(data.properties.name, {
+		maxWidth : 520
+	});
+},
+
+_setTiles: function() {
+	var tiles = this.settings.api.mapTiles ? this.settings.api.mapTiles : 'http://tile.yellowpages.ca/osm/{z}/{x}/{y}.png';
+	this.tileLayer = L.tileLayer(tiles, {
+		maxZoom: 18,
+		noWrap: true
+	});
+},
+
+_showPinTooltip: function () {
+	var mapMain = YPCA.Maps.osm;
+
+	if(typeof mapMain.cache['showPinTooltip'] === 'undefined') {
+		mapMain.cache['showPinTooltip'] = document.querySelectorAll('.jsListElement').length > 0;
+	}
+
+	return mapMain.cache['showPinTooltip'];
+},
+
+_setView: function (center, zoom) {
+	var lat = center ? center.features[0].geometry.coordinates[0] : 60,
+		lng = center ? center.features[0].geometry.coordinates[1] : -95;
+
+	if (typeof(zoom) === "undefined"){
+		zoom = center ? 13 : 4;
+	}
+
+	this.map.setView(new L.LatLng(lat, lng), zoom);
+},
+
+_setMapCenter: function() {
+	this.map.fitBounds(this.aGroupPin, {padding: [50, 50]});
+},
+
+getMapCanvas: function() {
+	return this.map;
+}
+};
+
+jQuery(function () {
+YPCA.Maps.osm._init();
+});

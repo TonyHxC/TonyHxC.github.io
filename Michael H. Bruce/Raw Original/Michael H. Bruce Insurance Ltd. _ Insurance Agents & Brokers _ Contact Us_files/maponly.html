@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!-- saved from url=(0110)http://www.wss.yellowpages.ca/map/maponly.html?latitude=45.2874795&longitude=-66.0835992&mapHeight=280&zoom=13 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>YP Maps</title>
+		
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="stylesheet" href="./leaflet.css">
+		<link href="./css" rel="stylesheet" type="text/css">
+		<link rel="stylesheet" href="./leaflet.css">
+		<style type="text/css">
+			.ypPinOsm {
+				background-image: url("images/map-pin.svg");
+			}
+
+			.ypPinOsm {
+				background-repeat: no-repeat;
+				width: 32px!important;
+				height: 44px!important;
+			}
+		</style>
+		<script type="text/javascript">
+			function ypg_namespace (ns_string) {
+				var parts = ns_string.split('.'),
+					parent = YPCA,
+					i;
+				if (parts[0] === "YPCA") {
+					parts = parts.slice(1);
+				}
+
+				for (i = 0; i < parts.length; i += 1) {
+					if (typeof parent[parts[i]] === "undefined") {
+						parent[parts[i]] = {};
+					}
+					parent = parent[parts[i]];
+				}
+				return parent;
+			}
+		</script>
+		<script type="text/javascript" src="./jquery-2.2.4.min.js.download"></script>
+	</head>
+	<body style="margin:0" marginheight="0">
+		<div id="ypgmap" class="mapResult leaflet-container leaflet-fade-anim" tabindex="0" style="height: 280px; position: relative;"><div class="leaflet-map-pane" style="transform: translate3d(0px, 0px, 0px);"><div class="leaflet-tile-pane"><div class="leaflet-layer"><div class="leaflet-tile-container"></div><div class="leaflet-tile-container leaflet-zoom-animated"><img class="leaflet-tile leaflet-tile-loaded" src="./2937.png" style="height: 256px; width: 256px; left: -172px; top: -12px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2937(1).png" style="height: 256px; width: 256px; left: 84px; top: -12px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2938.png" style="height: 256px; width: 256px; left: -172px; top: 244px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2938(1).png" style="height: 256px; width: 256px; left: 84px; top: 244px;"></div></div><div class="leaflet-layer"><div class="leaflet-tile-container"></div><div class="leaflet-tile-container leaflet-zoom-animated"><img class="leaflet-tile leaflet-tile-loaded" src="./2937.png" style="height: 256px; width: 256px; left: -172px; top: -12px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2937(1).png" style="height: 256px; width: 256px; left: 84px; top: -12px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2938.png" style="height: 256px; width: 256px; left: -172px; top: 244px;"><img class="leaflet-tile leaflet-tile-loaded" src="./2938(1).png" style="height: 256px; width: 256px; left: 84px; top: 244px;"></div></div></div><div class="leaflet-objects-pane"><div class="leaflet-shadow-pane"></div><div class="leaflet-overlay-pane"></div><div class="leaflet-marker-pane"><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -12.5px; margin-top: -32px; width: 25px; height: 32px; transform: translate3d(143px, 140px, 0px); z-index: 1140;"><div class="ypPinOsm"></div></div><div class="leaflet-marker-icon leaflet-zoom-animated leaflet-clickable" tabindex="0" style="margin-left: -12.5px; margin-top: -32px; width: 25px; height: 32px; transform: translate3d(143px, 140px, 0px); z-index: 1140;"><div class="ypPinOsm"></div></div></div><div class="leaflet-popup-pane"></div></div></div><div class="leaflet-control-container"><div class="leaflet-top leaflet-left"><div class="leaflet-control-zoom leaflet-bar leaflet-control"><a class="leaflet-control-zoom-in" href="http://www.wss.yellowpages.ca/map/maponly.html?latitude=45.2874795&amp;longitude=-66.0835992&amp;mapHeight=280&amp;zoom=13#" title="Zoom in">+</a><a class="leaflet-control-zoom-out" href="http://www.wss.yellowpages.ca/map/maponly.html?latitude=45.2874795&amp;longitude=-66.0835992&amp;mapHeight=280&amp;zoom=13#" title="Zoom out">-</a></div></div><div class="leaflet-top leaflet-right"></div><div class="leaflet-bottom leaflet-left"></div><div class="leaflet-bottom leaflet-right"><div class="leaflet-control-attribution leaflet-control"><a title="A JS library for interactive maps" target="_blank" href="http://leafletjs.com/">Leaflet</a> | © <a class="map-leaflet__copyright" target="_blank" href="http://osm.org/copyright">OpenStreetMap</a></div></div></div></div>
+		<script type="application/json" id="map-resource" class="jsMapResource">{"errorMessage":{"ZERO_RESULTS":"Zero Results found","NOT_FOUND":"Not found"},"yp_address":{"street":""},"mapCenter":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[0,0]},"properties":{}}]},"geoJson":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":["45.2874795","-66.0835992"]},"properties":{"id":1,"name":"","pinIndex":1}}]}}</script>
+		<script id="mapsAPI" class="jsMapsApiConfig" language="json" type="application/json" charset="utf-8">
+			{
+				"mapProvider": "osm",
+				"mapApiSrc" : "",
+				"mapApiId" : "",
+				"mapApiKey" : "",
+				"mapLanguage" : "en-CA",
+				"mapApiModuleSrc": [],
+				"mapTiles" : "//cdn.tile.yellowpages.ca/osm/{z}/{x}/{y}.png"
+			}
+		</script>
+		<script type="text/javascript">
+			var YPCA = window.YPCA || {};
+			YPCA.Maps = window.YPCA.Maps || {};
+			YPCA.Maps.osm = window.YPCA.Maps.osm || {};
+			YPCA.Maps.customProps = window.YPCA.Maps.customProps || {};
+
+			YPCA.Maps.customProps = {
+				mapContainer: "ypgmap",
+				showInfoWindow: 'none',
+				maximizeMapHeight: {
+					maximize: false,
+					ancestor: '#mapBorder'
+				},
+				showLabelOnMarker: false,
+				fetchListingDetailsUrl: '/search/listingDetails/',
+				pin: {
+					defaultPin: 'main',
+					main: {
+						icon: '',
+						width: 25,
+						height: 32,
+						offsetHorizontal: 0
+					},
+					alt: {
+						icon: '',
+						width: 32,
+						height: 44,
+						offsetHorizontal: 0
+					},
+					max: 30
+				},
+				label: {
+					"class": 'ypPin',
+					show: true
+				},
+				zoom: getZoom(),
+				pluginUrl: '',
+				
+				specialPinTmpl: ''
+			};
+			function gup( name ){
+				name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+				var regexS = "[\\?&]"+name+"=([^&#]*)";
+				var regex = new RegExp( regexS );
+				var results = regex.exec( window.location.href );
+				if( results == null ){
+					return "";
+				} else {
+					return results[1];
+				}
+			}
+			jQuery(document).ready(function(){
+				jQuery("#ypgmap").css("height",getMapHeight() + "px");
+				addPin(gup("latitude"), gup("longitude"));
+			});
+			function getMapHeight() {
+				if(gup("mapHeight") != "") {
+					return gup("mapHeight");
+				}
+				return 280;
+			}
+			function getZoom() {
+				if(gup("zoom") != "") {
+					return gup("zoom")
+				}
+				return 13;
+			}
+			function addPin(latitude,longitude) {
+				var geoJson = {};
+				geoJson.type = "Feature";
+				geoJson.geometry = {};
+				geoJson.geometry.type = "Point";
+				geoJson.geometry.coordinates = [latitude,longitude];
+				geoJson.properties = {};
+				geoJson.properties.id = 1;
+				geoJson.properties.name="";
+				geoJson.properties.pinIndex=1;
+				var json = JSON.parse(jQuery("#map-resource").html());
+				json.geoJson.features.push(geoJson);
+				jQuery("#map-resource").html(JSON.stringify(json));
+				console.log(json);
+				YPCA.Maps.osm._init();
+			}
+		</script>
+		<script type="text/javascript" src="./leaflet.js.download"></script>
+		<script type="text/javascript" src="./mapsUtils-v3.js.download"></script>
+		<script type="text/javascript" src="./ypcaUtils.js.download"></script>
+		<script type="text/javascript" src="./ypUtils.js.download"></script>
+		<script type="text/javascript" src="./main.js.download"></script>
+	
+
+</body></html>

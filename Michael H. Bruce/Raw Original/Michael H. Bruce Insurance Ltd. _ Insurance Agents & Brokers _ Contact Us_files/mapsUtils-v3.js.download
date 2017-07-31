@@ -1,0 +1,227 @@
+// JSHint specific settings
+/* global jQuery, YPCA */
+
+/**
+ * @module YPCA.Maps.utils
+ */
+"use strict";
+
+var YPCA = window.YPCA || {};
+
+ypg_namespace('YPCA.Maps.utils');
+
+YPCA.Maps.utils = {
+    /**
+     * Takes
+     *
+     * @mtehod setCustomProperties
+     */
+    setCustomProperties: function () {
+        if (YPCA.Maps.customProps) {
+            jQuery.extend(true, this.settings, YPCA.Maps.customProps);
+        }
+
+        YPCA.publish('Map/Properties/Set');
+    },
+
+    /**
+     * Retrieves the maps API url from the DOM.
+     *
+     * @mtehod getMapsAPI
+     */
+    getMapsAPI: function () {
+        this.mapsAPI = YPCA.Maps.utils._parseData(jQuery('#mapsAPI').html());
+
+        YPCA.publish('Map/API/Set');
+    },
+
+    /**
+     * Fetches the source for a script from a pseudo JSON object inside a script tag.
+     *
+     * @method _fetchScriptSrc
+     * @param el {String} id of DOM element to look for.
+     * @param key {String} key inside JSONified element.
+     */
+    _fetchScriptSrc: function (el, key) {
+        var script = jQuery(el).html();
+        return JSON.parse(script)[key];
+    },
+
+    /**
+     * Maximizes height of all elements with a class of 'jsMaximizeHeight' according to a parent element specified by 'this.settings._maximizeMapHeight'.
+     *
+     * @method _maximizeMapHeight
+     * @param main {object} Object context.
+     * @private
+     */
+    maximizeMapSize: function (main) {
+        if (main.settings.maximizeMapHeight.maximize) {
+            jQuery('.jsMaximizeWidth').width(jQuery(window).width() - jQuery('.mainContainer').width());
+
+            jQuery('.jsMaximizeHeight').each(function () {
+                jQuery(this).height(jQuery(window).height() - jQuery(this).offset().top - 5);
+            });
+        }
+    },
+
+    /**
+     * Initializes the map canvas.
+     *
+     * @method setCanvasSize
+     */
+    setCanvasSize: function () {
+        var utils = YPCA.Maps.utils,
+            main = YPCA.Maps.nokia;
+
+        jQuery('.mapWrap').show();
+
+        utils.maximizeMapSize(main);
+
+        jQuery(window).resize(function () {
+            utils.maximizeMapSize(main);
+        });
+
+        YPCA.publish('Canvas/Size/Set');
+    },
+
+    /**
+     * Retrieves DOM element containing the result list.
+     *
+     * @method retrieveDataFromDOM
+     * @returns {Object}
+     */
+    retrieveDataFromDOM: function () {
+        var domEl = jQuery('.jsMapResource');
+
+        if (domEl.length > 0) {
+            YPCA.publish('Data/Retrieved', domEl);
+        }
+
+        return domEl; // used for Unit tests only
+    },
+
+    /**
+     *
+     *
+     * @mtehod showMapButtons
+     */
+    showMapButtons: function () {
+        if (YPCA.Utils.urlParamHash('expandMap') === 0) {
+            if (JSON.parse(jQuery('.jsMapResource').html()).geoJson.features.length === 1) {
+                jQuery('.mapWrap .getDirections').css('display', 'none');
+            } else {
+                jQuery('.mapWrap .getDirections').css('display', 'block');
+            }
+        }
+
+        jQuery('.mapWrap .mapToggle').hide(); // no big map on Yahoo co-brand.
+    },
+
+    /**
+     * Gets data from DOM element and parses it into an object.
+     *
+     * @method convertDataToJSON
+     * @param domEl {object}
+     */
+    convertDataToJSON: function (domEl) {
+        var json,
+            html,
+            dataLength = domEl.length;
+
+        if (dataLength > 1) {
+            html = YPCA.Maps.utils._parseData(domEl.first().html());
+        } else {
+            html = YPCA.Maps.utils._parseData(domEl.html());
+        }
+
+        try {
+            // Get data from proper object. YP uses the old format and c411 uses the new format.
+            json = html.geoJson.features;
+        } catch (e) {
+            //console.log(e);
+        }
+
+        if (json) {
+            this.data = json;
+
+            /**
+             * @event Data/Parsed
+             */
+            YPCA.publish('Data/Parsed', {data: json, pinType: 'enum', resetMarkers: true});
+        }
+
+        return html;
+    },
+
+    /**
+     *
+     *
+     * @mtehod fetchDots
+     */
+    fetchDots: function () {
+        var that = this;
+        if (this.settings.fetchDots) {
+            YPCA.MapServices.fetchDots(
+                function (data) {
+                    YPCA.Maps.nokia._createMarkers({
+                        data: YPCA.Maps.utils._excludeDupeMarkers(that.data, data.features),
+                        pinType: 'dots',
+                        resetMarkers: false
+                    });
+                }
+            );
+        }
+    },
+
+    /**
+     * Converts a string to an object.
+     *
+     * @method _parseData
+     * @param data {String}
+     * @returns {Object}
+     * @private
+     */
+    _parseData: function (data) {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.log('_parseData: Error parsing object to JSON ');
+        }
+    },
+
+    /**
+     * Removes duplicate markers.
+     *
+     * @mtehod _excludeDupeMarkers
+     * @param dataA
+     * @param dataB
+     * @returns {Array}
+     * @private
+     */
+    _excludeDupeMarkers: function (dataA, dataB) {
+        var makerNotDupe = false,
+            filteredData = [],
+            dataALength = dataA.length,
+            dataBLength = dataB.length,
+            x = 0,
+            i,
+            j;
+
+        for (i = 0; i < dataBLength; i += 1) {
+            for (j = 0; j < dataALength; j += 1) {
+                if (dataB[i].properties.id === dataA[j].properties.id) {
+                    makerNotDupe = false;
+                    break;
+                } else {
+                    makerNotDupe = true;
+                }
+            }
+
+            if (makerNotDupe) {
+                filteredData[x++] = dataB[i];
+            }
+        }
+
+        return filteredData;
+    }
+};

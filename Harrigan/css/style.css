@@ -1171,6 +1171,12 @@ ul.sidebar-gallery {
 .center p{
    text-align:center;
 }
+.center h4{
+  font-size: 25px;
+  margin-top: 0;
+  margin-bottom: 20px;
+  text-align:center;
+}
 
 .btn-lg:hover {
 	color:#9c2b82;
