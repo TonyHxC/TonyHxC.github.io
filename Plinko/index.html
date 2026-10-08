@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Plinko Roguelite</title>
+<style>
+  :root {
+    --bg: #0d0b1a;
+    --panel: #1a1630;
+    --panel2: #241f42;
+    --text: #ece9ff;
+    --muted: #9a93c4;
+    --accent: #7cf5ff;
+    --gold: #ffd166;
+    --red: #ff5d73;
+    --green: #6bff9e;
+    --purple: #b98cff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: radial-gradient(ellipse at top, #1b1640 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  #app {
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 8px 6px;
+  }
+  #hud {
+    width: 100%; max-width: 600px;
+    display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+    align-items: center; margin-bottom: 6px;
+  }
+  .floor { font-weight: 800; font-size: 18px; letter-spacing: .5px; }
+  .floor small { display: block; font-weight: 600; font-size: 12px; color: var(--red); letter-spacing: 0; }
+  .pill {
+    background: var(--panel); border: 1px solid #2f2858; border-radius: 999px;
+    padding: 4px 10px; font-weight: 700; font-size: 14px; white-space: nowrap;
+  }
+  .pill.coins { color: var(--gold); }
+  #mute { cursor: pointer; }
+  #progress {
+    width: 100%; max-width: 600px; height: 22px; position: relative;
+    background: var(--panel); border-radius: 999px; overflow: hidden;
+    border: 1px solid #2f2858; margin-bottom: 6px;
+  }
+  #progress .fill {
+    position: absolute; inset: 0 auto 0 0; width: 0%;
+    background: linear-gradient(90deg, #4d7cff, var(--accent));
+    transition: width .25s ease;
+  }
+  #progress .fill.done { background: linear-gradient(90deg, #2fcf72, var(--green)); }
+  #progress .label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; text-shadow: 0 1px 2px #000a;
+  }
+  #ballsRow { width: 100%; max-width: 600px; display: flex; gap: 5px; align-items: center; margin-bottom: 6px; min-height: 14px; font-size: 12px; color: var(--muted); }
+  .bdot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .bdot.used { background: #2f2858; box-shadow: none; }
+  #stage { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; }
+  canvas { display: block; border-radius: 14px; background: #120f26; box-shadow: 0 0 0 1px #2f2858, 0 10px 40px #0008; cursor: crosshair; }
+  #relics { width: 100%; max-width: 600px; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; min-height: 22px; }
+  .relic { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: var(--panel2); border: 1px solid #3a3270; cursor: help; }
+  .relic.rare { border-color: #4d7cff; }
+  .relic.epic { border-color: var(--purple); }
+
+  .overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; padding: 16px;
+    background: #0d0b1acc; backdrop-filter: blur(3px); border-radius: 14px; z-index: 5;
+  }
+  .overlay.show { display: flex; }
+  .box { width: 100%; max-width: 520px; text-align: center; max-height: 100%; overflow-y: auto; }
+  .box h1 { font-size: 40px; margin: 0 0 4px; letter-spacing: 1px;
+    background: linear-gradient(90deg, var(--accent), var(--purple), var(--gold));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .box h2 { font-size: 26px; margin: 0 0 6px; }
+  .box p { color: var(--muted); margin: 6px 0; line-height: 1.45; font-size: 14px; }
+  .legend { text-align: left; display: grid; gap: 6px; margin: 14px auto; max-width: 380px; font-size: 14px; }
+  .legend span.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
+  button.btn {
+    font: inherit; font-weight: 800; font-size: 16px; color: #0d0b1a; cursor: pointer;
+    background: var(--accent); border: 0; border-radius: 10px; padding: 12px 22px; margin: 8px 4px 0;
+    box-shadow: 0 4px 0 #3aa7b3; transition: transform .08s;
+  }
+  button.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #3aa7b3; }
+  button.btn.secondary { background: var(--panel2); color: var(--text); box-shadow: 0 4px 0 #120f26; font-size: 14px; padding: 10px 14px; }
+  button.btn:disabled { opacity: .4; cursor: not-allowed; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 6px; }
+  .card {
+    background: var(--panel); border: 2px solid #3a3270; border-radius: 12px; padding: 12px 8px;
+    cursor: pointer; transition: transform .1s, border-color .1s; display: flex; flex-direction: column; gap: 6px;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .card.rare { border-color: #4d7cff; }
+  .card.epic { border-color: var(--purple); box-shadow: 0 0 16px #b98cff44; }
+  .card .icon { font-size: 26px; line-height: 1; }
+  .card .name { font-weight: 800; font-size: 14px; }
+  .card .desc { font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .card .rar { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 800; color: var(--muted); }
+  .card.rare .rar { color: #7fa0ff; } .card.epic .rar { color: var(--purple); }
+  .card .lvl { font-size: 11px; color: var(--gold); font-weight: 700; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .stat { background: var(--panel); border-radius: 10px; padding: 10px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .toast {
+    position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--purple); padding: 10px 16px; border-radius: 10px;
+    font-weight: 800; z-index: 6; pointer-events: none; opacity: 0; transition: opacity .3s;
+    text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  @media (max-width: 480px) {
+    .cards { grid-template-columns: 1fr; }
+    .card { flex-direction: row; align-items: center; text-align: left; gap: 10px; }
+    .card .icon { font-size: 28px; width: 34px; text-align: center; }
+    .box h1 { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="floor" id="floorLabel">Floor 1</div>
+    <div class="pill coins" id="coinLabel">● 0</div>
+    <div class="pill" id="mute" title="Toggle sound">♪ On</div>
+  </div>
+  <div id="progress"><div class="fill" id="progFill"></div><div class="label" id="progLabel">0 / 0</div></div>
+  <div id="ballsRow"></div>
+  <div id="stage">
+    <canvas id="c" width="600" height="800"></canvas>
+
+    <div class="overlay show" id="ovStart"><div class="box">
+      <h1>PLINKO</h1>
+      <p style="font-weight:800;color:var(--text);letter-spacing:3px;margin-top:0">ROGUELITE</p>
+      <p>Drop balls through the pegs. Every peg hit adds points, then the bucket multiplies them. Hit the target before you run out of balls to climb to the next floor and pick an upgrade.</p>
+      <div class="legend">
+        <div><span class="dot" style="background:#cfc8ff"></span>Peg: +points per hit</div>
+        <div><span class="dot" style="background:var(--gold)"></span>Gold peg: triple points, +1 coin</div>
+        <div><span class="dot" style="background:var(--red)"></span>Red peg: doubles that ball's multiplier</div>
+        <div><span class="dot" style="background:#ff9a3c"></span>Bomb peg: triggers every peg nearby</div>
+        <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
+      </div>
+      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>Every 5th floor is a boss with a nasty twist.</p>
+      <button class="btn" id="btnStart">Start Run</button>
+      <p id="bestLine" style="margin-top:12px"></p>
+    </div></div>
+
+    <div class="overlay" id="ovReward"><div class="box">
+      <h2 id="rewardTitle">Floor cleared!</h2>
+      <p id="rewardInfo"></p>
+      <div class="cards" id="cards"></div>
+      <div>
+        <button class="btn secondary" id="btnReroll">Reroll</button>
+        <button class="btn secondary" id="btnBuyBall">+1 ball next floor</button>
+        <button class="btn secondary" id="btnSkip">Skip (+4 ●)</button>
+      </div>
+    </div></div>
+
+    <div class="overlay" id="ovOver"><div class="box">
+      <h2 style="color:var(--red)">Run over</h2>
+      <p id="overInfo"></p>
+      <div class="stats" id="overStats"></div>
+      <button class="btn" id="btnRestart">New Run</button>
+    </div></div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+  <div id="relics"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- Constants ----------
+const W = 600, H = 800;
+const WALL_L = 18, WALL_R = 582; // outer pegs sit flush with the walls so nothing can wedge
+const DROP_Y = 34;
+const PEG_TOP = 110, ROW_GAP = 46, ROWS = 13, COL_GAP = 46, PEG_R = 6;
+const BUCKET_TOP = 712, BUCKET_COUNT = 11;
+const GRAVITY = 1300;
+const BASE_MULTS = [8, 4, 2, 1.2, 0.6, 0.4, 0.6, 1.2, 2, 4, 8];
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---------- Storage (safe) ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('plinkoRL_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('plinkoRL_' + k, JSON.stringify(v)); } catch (e) {} }
+};
+
+// ---------- Audio ----------
+let audioCtx = null, muted = store.get('muted', false);
+function sfx(freq, dur = 0.06, type = 'sine', vol = 0.08) {
+  if (muted) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch (e) {}
+}
+function updateMuteLabel() { $('mute').textContent = muted ? '♪ Off' : '♪ On'; }
+$('mute').onclick = () => { muted = !muted; store.set('muted', muted); updateMuteLabel(); };
+updateMuteLabel();
+
+// ---------- Upgrades ----------
+const UPGRADES = [
+  { id: 'heavy',   name: 'Heavy Ball',   icon: '⬤', rarity: 'common', max: 6, desc: '+1 point for every peg hit.' },
+  { id: 'gold',    name: 'Gold Rush',    icon: '✦', rarity: 'common', max: 6, desc: '+2 gold pegs on every floor.' },
+  { id: 'big',     name: 'Big Ball',     icon: '◉', rarity: 'common', max: 2, desc: 'Balls are bigger and hit more pegs.' },
+  { id: 'bouncy',  name: 'Rubber Ball',  icon: '◎', rarity: 'common', max: 3, desc: 'Balls bounce higher, staying on the board longer.' },
+  { id: 'center',  name: 'Safe Middle',  icon: '▣', rarity: 'common', max: 5, desc: 'The 3 middle buckets get +0.6×.' },
+  { id: 'interest',name: 'Interest',     icon: '¢', rarity: 'common', max: 3, desc: 'After each floor, +1 coin per 5 you hold (up to +3 per level).' },
+  { id: 'crit',    name: 'Red Pegs',     icon: '✚', rarity: 'rare',   max: 5, desc: '+1 red peg. Red pegs double the ball\'s multiplier.' },
+  { id: 'bomb',    name: 'Bomb Pegs',    icon: '✹', rarity: 'rare',   max: 4, desc: '+1 bomb peg. Bombs trigger every peg nearby.' },
+  { id: 'split',   name: 'Splitter',     icon: '⑂', rarity: 'rare',   max: 4, desc: '+1 splitter peg. Splitters clone the ball.' },
+  { id: 'extra',   name: 'Extra Ball',   icon: '+', rarity: 'rare',   max: 4, desc: '+1 ball on every floor.' },
+  { id: 'edge',    name: 'Edge Lord',    icon: '⇔', rarity: 'rare',   max: 3, desc: 'The 2 outer buckets on each side get +100% multiplier.' },
+  { id: 'jackpot', name: 'Lucky Bucket', icon: '★', rarity: 'rare',   max: 3, desc: 'Each floor, a random bucket gets +5×.' },
+  { id: 'momentum',name: 'Momentum',     icon: '»', rarity: 'epic',   max: 3, desc: 'Every 8 peg hits, the ball gains +0.25× multiplier.' },
+  { id: 'echo',    name: 'Echo',         icon: '∞', rarity: 'epic',   max: 2, desc: 'Each ball you drop has a 25% chance to be followed by a free copy.' },
+  { id: 'second',  name: 'Second Wind',  icon: '♥', rarity: 'epic',   max: 1, desc: 'Once per run, retry a failed floor.' },
+];
+const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
+const RARITY_W = { common: 60, rare: 30, epic: 10 };
+
+const BOSSES = [
+  { id: 'dead',  name: 'Dead Zones',   desc: 'Two buckets pay nothing.' },
+  { id: 'wind',  name: 'Crosswind',    desc: 'A shifting wind pushes balls sideways.' },
+  { id: 'lean',  name: 'Lean Times',   desc: 'One fewer ball this floor.' },
+  { id: 'dim',   name: 'Dim Pegs',     desc: 'Special pegs are halved.' },
+];
+
+// ---------- State ----------
+let run = null;   // persistent across floors
+let fl = null;    // current floor
+let balls = [], particles = [], texts = [];
+let mode = 'menu'; // menu | play | reward | over
+let aimX = W / 2, dropCooldown = 0, shake = 0, time = 0, pegIdSeq = 0;
+
+const U = id => (run && run.up[id]) || 0;
+const pegValue = () => 1 + U('heavy');
+const ballRadius = () => 9 + 2.5 * U('big');
+const restitution = () => 0.45 + 0.07 * U('bouncy');
+
+function newRun() {
+  run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore: 0, bestBall: 0, rerolls: 0 };
+  startFloor();
+}
+
+function targetFor(f) {
+  const t = 140 * Math.pow(1.27, f - 1);
+  return Math.round(f % 5 === 0 ? t * 1.15 : t);
+}
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function startFloor(keepLayout) {
+  const f = run.floor;
+  const isBoss = f % 5 === 0;
+  const boss = keepLayout ? fl.boss : (isBoss ? BOSSES[(Math.random() * BOSSES.length) | 0] : null);
+  let ballsN = 5 + U('extra') + run.bonusBalls - (boss && boss.id === 'lean' ? 1 : 0);
+  if (!keepLayout) run.bonusBalls = 0;
+
+  let pegs, mults;
+  if (keepLayout) {
+    pegs = fl.pegs; mults = fl.mults; ballsN = fl.ballsTotal;
+  } else {
+    pegs = [];
+    for (let r = 0; r < ROWS; r++) {
+      const odd = r % 2 === 1;
+      const n = odd ? 12 : 13;
+      const x0 = W / 2 - COL_GAP * (n - 1) / 2;
+      for (let i = 0; i < n; i++) pegs.push({ id: pegIdSeq++, x: x0 + i * COL_GAP, y: PEG_TOP + r * ROW_GAP, r: PEG_R, type: 'normal', flash: 0, row: r });
+    }
+    const dimF = boss && boss.id === 'dim' ? 0.5 : 1;
+    const counts = {
+      gold: Math.round((3 + 2 * U('gold')) * dimF),
+      red: Math.round((1 + U('crit')) * dimF),
+      bomb: Math.round(U('bomb') * dimF),
+      split: Math.round(U('split') * dimF),
+    };
+    const pool = shuffle(pegs.filter(p => p.row > 0));
+    let k = 0;
+    for (const [type, c] of Object.entries(counts)) for (let i = 0; i < c && k < pool.length; i++) pool[k++].type = type;
+
+    mults = BASE_MULTS.slice();
+    for (const i of [4, 5, 6]) mults[i] += 0.6 * U('center');
+    for (const i of [0, 1, 9, 10]) mults[i] *= 1 + U('edge');
+    const idx = shuffle([...Array(BUCKET_COUNT).keys()]);
+    for (let j = 0; j < U('jackpot'); j++) mults[idx[j]] += 5;
+    if (boss && boss.id === 'dead') {
+      const cand = shuffle([1, 2, 3, 4, 6, 7, 8, 9]);
+      mults[cand[0]] = 0; mults[cand[1]] = 0;
+    }
+    mults = mults.map(m => Math.round(m * 10) / 10);
+  }
+  fl = { pegs, mults, boss, target: targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0 };
+  balls = []; particles = []; texts = [];
+  mode = 'play';
+  for (const p of pegs) p.flash = 0;
+  showOverlay(null);
+  updateHUD();
+  if (boss && !keepLayout) toast(`BOSS: ${boss.name}<br><span style="font-weight:600;color:var(--muted);font-size:13px">${boss.desc}</span>`, 2600);
+}
+
+// ---------- Balls ----------
+function spawnBall(x, free) {
+  const r = ballRadius();
+  balls.push({
+    x: Math.max(WALL_L + r + 2, Math.min(WALL_R - r - 2, x + (Math.random() - 0.5))),
+    y: DROP_Y, vx: (Math.random() - 0.5) * 20, vy: 0, r,
+    pts: 0, mult: 1, hits: 0, used: new Set(), hitT: new Map(), maxY: DROP_Y, sinceProgress: 0, ghost: 0, age: 0, trail: [], free: !!free,
+  });
+}
+
+function drop() {
+  if (mode !== 'play' || fl.ballsLeft <= 0 || dropCooldown > 0) return;
+  if (fl.score >= fl.target) return;
+  fl.ballsLeft--;
+  dropCooldown = 0.22;
+  spawnBall(aimX);
+  if (U('echo') && Math.random() < 0.25 * U('echo')) {
+    setTimeout(() => { if (mode === 'play') { spawnBall(aimX + (Math.random() - 0.5) * 30, true); addText(aimX, DROP_Y + 20, 'ECHO', '#b98cff', 14); } }, 280);
+  }
+  sfx(220, 0.08, 'triangle');
+  updateHUD();
+}
+
+function addText(x, y, text, color = '#fff', size = 14, life = 0.9) { texts.push({ x, y, text, color, size, life, max: life }); }
+function burst(x, y, color, n = 10, spd = 160) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = spd * (0.3 + Math.random());
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.4, color });
+  }
+}
+
+const PEG_COLORS = { normal: '#cfc8ff', gold: '#ffd166', red: '#ff5d73', bomb: '#ff9a3c', split: '#6bff9e' };
+
+function scorePeg(b, p, chain) {
+  const v = pegValue();
+  let gain = v;
+  if (p.type === 'gold') {
+    gain = v * 3;
+    if (!b.used.has('g' + p.id)) { b.used.add('g' + p.id); run.coins++; addText(p.x, p.y - 22, '+1 ●', '#ffd166', 12); sfx(1320, 0.07, 'square', 0.04); }
+  }
+  b.pts += gain;
+  b.hits++;
+  p.flash = 1;
+  if (!chain) {
+    if (U('momentum') && b.hits % 8 === 0) { b.mult += 0.25 * U('momentum'); addText(b.x, b.y - 18, `+${(0.25 * U('momentum')).toFixed(2)}×`, '#b98cff', 13); }
+    sfx(400 + Math.min(b.hits, 30) * 28, 0.05, 'sine', 0.05);
+  }
+}
+
+function hitPeg(b, p) {
+  const last = b.hitT.get(p.id);
+  if (last !== undefined && b.age - last < 0.15) return;
+  b.hitT.set(p.id, b.age);
+  scorePeg(b, p, false);
+
+  const firstTime = !b.used.has(p.id);
+  if (firstTime) b.used.add(p.id);
+  if (!firstTime) return;
+
+  if (p.type === 'red') {
+    b.mult *= 2;
+    addText(p.x, p.y - 18, '×2', '#ff5d73', 18);
+    burst(p.x, p.y, '#ff5d73', 12);
+    sfx(880, 0.12, 'sawtooth', 0.04);
+    shake = Math.max(shake, 4);
+  } else if (p.type === 'bomb') {
+    let n = 0;
+    for (const q of fl.pegs) {
+      if (q === p) continue;
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < 115) { scorePeg(b, q, true); n++; burst(q.x, q.y, '#ff9a3c', 3, 80); }
+    }
+    addText(p.x, p.y - 20, `BOOM +${n}`, '#ff9a3c', 18);
+    burst(p.x, p.y, '#ff9a3c', 30, 280);
+    sfx(90, 0.3, 'sawtooth', 0.12);
+    shake = Math.max(shake, 10);
+  } else if (p.type === 'split') {
+    const clones = balls.filter(x => x.clone).length;
+    if (clones < 8) {
+      const c = { ...b, vx: -b.vx || 60, used: new Set(b.used), hitT: new Map(b.hitT), trail: [], clone: true, pts: Math.floor(b.pts / 2) };
+      b.pts = Math.ceil(b.pts / 2);
+      c.x += c.vx > 0 ? 2 : -2;
+      balls.push(c);
+      addText(p.x, p.y - 18, 'SPLIT', '#6bff9e', 15);
+      burst(p.x, p.y, '#6bff9e', 14);
+      sfx(660, 0.1, 'triangle', 0.06);
+    }
+  }
+}
+
+function settle(b) {
+  const bw = (WALL_R - WALL_L) / BUCKET_COUNT;
+  const i = Math.max(0, Math.min(BUCKET_COUNT - 1, Math.floor((b.x - WALL_L) / bw)));
+  const m = fl.mults[i];
+  const total = Math.round(b.pts * b.mult * m);
+  fl.score += total;
+  run.totalScore += total;
+  run.bestBall = Math.max(run.bestBall, total);
+  const cx = WALL_L + bw * (i + 0.5);
+  const col = m === 0 ? '#ff5d73' : m >= 4 ? '#ffd166' : m >= 1 ? '#7cf5ff' : '#9a93c4';
+  addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
+  burst(cx, BUCKET_TOP + 20, col, m >= 4 ? 30 : 12, m >= 4 ? 260 : 140);
+  bucketFlash[i] = 1;
+  if (m >= 4) { shake = Math.max(shake, 8); sfx(1046, 0.25, 'triangle', 0.08); setTimeout(() => sfx(1568, 0.25, 'triangle', 0.06), 90); }
+  else sfx(m === 0 ? 120 : 523, 0.15, 'triangle', 0.06);
+  updateHUD();
+}
+const bucketFlash = new Array(BUCKET_COUNT).fill(0);
+const fmt = n => (Math.round(n * 100) / 100).toString();
+
+// ---------- Physics ----------
+function stepPhysics(dt) {
+  const e = restitution();
+  const wind = fl.boss && fl.boss.id === 'wind' ? Math.sin(time * 0.9) * 380 : 0;
+  for (let bi = balls.length - 1; bi >= 0; bi--) {
+    const b = balls[bi];
+    b.age += dt;
+    b.vy += GRAVITY * dt;
+    b.vx += wind * dt;
+    b.vx *= 0.9995;
+    const sp = Math.hypot(b.vx, b.vy);
+    if (sp > 1100) { b.vx *= 1100 / sp; b.vy *= 1100 / sp; }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    // walls
+    if (b.x - b.r < WALL_L) { b.x = WALL_L + b.r; b.vx = Math.abs(b.vx) * e; }
+    if (b.x + b.r > WALL_R) { b.x = WALL_R - b.r; b.vx = -Math.abs(b.vx) * e; }
+
+    // pegs (only check nearby rows)
+    const rowA = Math.floor((b.y - b.r - PEG_R - PEG_TOP) / ROW_GAP) - 1;
+    if (b.ghost > 0) b.ghost -= dt;
+    else for (const p of fl.pegs) {
+      if (p.row < rowA || p.row > rowA + 3) continue;
+      const dx = b.x - p.x, dy = b.y - p.y;
+      const rr = b.r + p.r;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < rr * rr && d2 > 0.0001) {
+        const d = Math.sqrt(d2);
+        const nx = dx / d, ny = dy / d;
+        b.x = p.x + nx * rr; b.y = p.y + ny * rr;
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) {
+          b.vx -= (1 + e) * vn * nx;
+          b.vy -= (1 + e) * vn * ny;
+          // tangential jitter so nothing balances on a peg
+          const tx = -ny, ty = nx, j = (Math.random() - 0.5) * 50;
+          b.vx += tx * j; b.vy += ty * j;
+          if (Math.abs(nx) < 0.15) b.vx += (Math.random() < 0.5 ? -1 : 1) * 30;
+          hitPeg(b, p);
+        }
+      }
+    }
+
+    // stuck protection: if the ball stops making downward progress, let it phase through pegs briefly
+    if (b.y > b.maxY + 2) { b.maxY = b.y; b.sinceProgress = 0; } else b.sinceProgress += dt;
+    if (b.sinceProgress > 1.2) { b.ghost = 0.3; b.vy = Math.max(b.vy, 250); b.sinceProgress = 0; b.maxY = b.y; }
+    if (b.age > 25) b.y = BUCKET_TOP + 30;
+
+    if (b.y > BUCKET_TOP + 24) { settle(b); balls.splice(bi, 1); }
+  }
+}
+
+function checkFloorEnd() {
+  if (mode !== 'play' || balls.length) return;
+  if (fl.score >= fl.target) floorCleared();
+  else if (fl.ballsLeft <= 0) floorFailed();
+}
+
+// ---------- Floor end ----------
+let offer = [];
+function floorCleared() {
+  mode = 'reward';
+  const unused = fl.ballsLeft;
+  const interest = Math.min(Math.floor(run.coins / 5), 3 * U('interest'));
+  const earned = 3 + unused * 2 + interest;
+  run.coins += earned;
+  run.rerolls = 0;
+  saveBest();
+  const parts = [`+3 ● for clearing`];
+  if (unused) parts.push(`+${unused * 2} ● for ${unused} unused ball${unused > 1 ? 's' : ''}`);
+  if (interest) parts.push(`+${interest} ● interest`);
+  $('rewardTitle').textContent = `Floor ${run.floor} cleared!`;
+  $('rewardInfo').innerHTML = `${parts.join(' · ')}<br>Choose an upgrade. Next target: <b style="color:var(--text)">${targetFor(run.floor + 1)}</b>${(run.floor + 1) % 5 === 0 ? ' <b style="color:var(--red)">(BOSS)</b>' : ''}`;
+  sfx(784, 0.15, 'triangle', 0.08); setTimeout(() => sfx(1046, 0.25, 'triangle', 0.08), 120);
+  rollOffer();
+  showOverlay('ovReward');
+  updateHUD();
+}
+
+function floorFailed() {
+  if (U('second') && !run.secondUsed) {
+    run.secondUsed = true;
+    toast('♥ Second Wind! Try the floor again.', 2200);
+    sfx(523, 0.2, 'triangle'); setTimeout(() => sfx(659, 0.3, 'triangle'), 150);
+    startFloor(true);
+    return;
+  }
+  mode = 'over';
+  saveBest();
+  const best = store.get('best', { floor: 0, score: 0 });
+  $('overInfo').innerHTML = `You scored <b style="color:var(--text)">${fl.score}</b> of <b style="color:var(--text)">${fl.target}</b> on floor ${run.floor}.`;
+  $('overStats').innerHTML = `
+    <div class="stat"><b>${run.floor}</b><span>Floor reached</span></div>
+    <div class="stat"><b>${run.totalScore.toLocaleString()}</b><span>Total score</span></div>
+    <div class="stat"><b>${run.bestBall.toLocaleString()}</b><span>Best single ball</span></div>
+    <div class="stat"><b>${best.floor}</b><span>Best floor ever</span></div>`;
+  sfx(196, 0.4, 'sawtooth', 0.06);
+  showOverlay('ovOver');
+}
+
+function saveBest() {
+  const best = store.get('best', { floor: 0, score: 0 });
+  const reached = mode === 'reward' ? run.floor + 1 : run.floor;
+  if (reached > best.floor) best.floor = reached;
+  if (run.totalScore > best.score) best.score = run.totalScore;
+  store.set('best', best);
+}
+
+function rollOffer() {
+  const avail = UPGRADES.filter(u => U(u.id) < u.max);
+  offer = [];
+  const pool = avail.slice();
+  while (offer.length < 3 && pool.length) {
+    const tot = pool.reduce((s, u) => s + RARITY_W[u.rarity], 0);
+    let r = Math.random() * tot, pick = 0;
+    for (let i = 0; i < pool.length; i++) { r -= RARITY_W[pool[i].rarity]; if (r <= 0) { pick = i; break; } }
+    offer.push(pool.splice(pick, 1)[0]);
+  }
+  const cards = $('cards');
+  cards.innerHTML = '';
+  for (const u of offer) {
+    const el = document.createElement('div');
+    el.className = 'card ' + u.rarity;
+    el.innerHTML = `<div class="icon">${u.icon}</div><div><div class="name">${u.name}</div><div class="rar">${u.rarity}</div><div class="desc">${u.desc}</div>${U(u.id) ? `<div class="lvl">Level ${U(u.id)} → ${U(u.id) + 1}</div>` : ''}</div>`;
+    el.onclick = () => takeUpgrade(u.id);
+    cards.appendChild(el);
+  }
+  if (!offer.length) cards.innerHTML = '<p>You own every upgrade at max level. Wow.</p>';
+  refreshShopButtons();
+}
+
+function refreshShopButtons() {
+  const rc = 2 + run.rerolls;
+  $('btnReroll').textContent = `Reroll (${rc} ●)`;
+  $('btnReroll').disabled = run.coins < rc;
+  $('btnBuyBall').textContent = `+1 ball next floor (6 ●)${run.bonusBalls ? ` [${run.bonusBalls}]` : ''}`;
+  $('btnBuyBall').disabled = run.coins < 6;
+  updateHUD();
+}
+
+function takeUpgrade(id) {
+  run.up[id] = U(id) + 1;
+  sfx(988, 0.12, 'square', 0.04);
+  nextFloor();
+}
+function nextFloor() { run.floor++; startFloor(); }
+
+$('btnReroll').onclick = () => { const rc = 2 + run.rerolls; if (run.coins < rc) return; run.coins -= rc; run.rerolls++; rollOffer(); sfx(600, 0.06); };
+$('btnBuyBall').onclick = () => { if (run.coins < 6) return; run.coins -= 6; run.bonusBalls++; refreshShopButtons(); sfx(700, 0.06); };
+$('btnSkip').onclick = () => { run.coins += 4; nextFloor(); };
+$('btnStart').onclick = () => { sfx(440, 0.05); newRun(); };
+$('btnRestart').onclick = () => { newRun(); };
+
+// ---------- UI ----------
+function showOverlay(id) {
+  for (const o of ['ovStart', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
+}
+let toastTimer = null;
+function toast(html, ms = 1800) {
+  const t = $('toast'); t.innerHTML = html; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function updateHUD() {
+  if (!run) return;
+  $('floorLabel').innerHTML = `Floor ${run.floor}${fl && fl.boss ? `<small>BOSS · ${fl.boss.name}</small>` : ''}`;
+  $('coinLabel').textContent = `● ${run.coins}`;
+  if (fl) {
+    const pct = Math.min(100, fl.score / fl.target * 100);
+    $('progFill').style.width = pct + '%';
+    $('progFill').classList.toggle('done', fl.score >= fl.target);
+    $('progLabel').textContent = `${fl.score.toLocaleString()} / ${fl.target.toLocaleString()}`;
+    const row = $('ballsRow');
+    let html = '';
+    for (let i = 0; i < fl.ballsTotal; i++) html += `<div class="bdot ${i < fl.ballsTotal - fl.ballsLeft ? 'used' : ''}"></div>`;
+    row.innerHTML = html + `<span style="margin-left:6px">${fl.ballsLeft} ball${fl.ballsLeft === 1 ? '' : 's'} left</span>`;
+  }
+  const rel = $('relics');
+  rel.innerHTML = '';
+  for (const u of UPGRADES) {
+    if (!U(u.id)) continue;
+    const el = document.createElement('div');
+    el.className = 'relic ' + u.rarity;
+    el.title = `${u.name} (Lv ${U(u.id)}): ${u.desc}`;
+    el.textContent = `${u.icon} ${u.name}${U(u.id) > 1 ? ' ' + U(u.id) : ''}`;
+    rel.appendChild(el);
+  }
+}
+
+function fitCanvas() {
+  const stage = $('stage');
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const scale = Math.min(sw / W, sh / H);
+  canvas.style.width = Math.floor(W * scale) + 'px';
+  canvas.style.height = Math.floor(H * scale) + 'px';
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(W * scale * dpr);
+  canvas.height = Math.round(H * scale * dpr);
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+}
+window.addEventListener('resize', fitCanvas);
+
+// ---------- Input ----------
+function toBoardX(clientX) {
+  const r = canvas.getBoundingClientRect();
+  return (clientX - r.left) / r.width * W;
+}
+function clampAim(x) { const r = ballRadius(); return Math.max(WALL_L + r + 2, Math.min(WALL_R - r - 2, x)); }
+canvas.addEventListener('pointermove', e => { aimX = clampAim(toBoardX(e.clientX)); });
+canvas.addEventListener('pointerdown', e => { aimX = clampAim(toBoardX(e.clientX)); drop(); });
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ---------- Render ----------
+function draw() {
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+
+  // background grid glow
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#16123a'); g.addColorStop(1, '#0e0b20');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  if (!fl) { ctx.restore(); return; }
+
+  // wind indicator
+  if (fl.boss && fl.boss.id === 'wind') {
+    const w = Math.sin(time * 0.9);
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = '#7cf5ff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) {
+      const y = 90 + i * 45, x = ((time * 160 * Math.sign(w) + i * 97) % (W + 100) + W + 100) % (W + 100) - 50;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 40 * w, y); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // drop zone + aim guide
+  if (mode === 'play') {
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = '#7cf5ff33'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(aimX, DROP_Y); ctx.lineTo(aimX, PEG_TOP - 14); ctx.stroke();
+    ctx.setLineDash([]);
+    if (fl.ballsLeft > 0 && fl.score < fl.target) {
+      ctx.globalAlpha = dropCooldown > 0 ? 0.35 : 0.9;
+      drawBall(aimX, DROP_Y, ballRadius(), false);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // pegs
+  for (const p of fl.pegs) {
+    const col = PEG_COLORS[p.type];
+    const glow = p.type !== 'normal' ? 12 : 0;
+    ctx.shadowColor = col; ctx.shadowBlur = glow + p.flash * 18;
+    ctx.fillStyle = p.flash > 0 ? '#ffffff' : col;
+    const rr = p.r + (p.type !== 'normal' ? 1.5 : 0) + p.flash * 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2); ctx.fill();
+    if (p.flash > 0) {
+      ctx.globalAlpha = p.flash * 0.6; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.shadowBlur = 0;
+
+  // buckets
+  const bw = (WALL_R - WALL_L) / BUCKET_COUNT;
+  for (let i = 0; i < BUCKET_COUNT; i++) {
+    const m = fl.mults[i], x = WALL_L + i * bw;
+    const col = m === 0 ? '#ff5d73' : m >= 6 ? '#ffd166' : m >= 3 ? '#ffb347' : m >= 1 ? '#7cf5ff' : '#6d66a0';
+    ctx.fillStyle = col;
+    ctx.globalAlpha = 0.16 + bucketFlash[i] * 0.5;
+    roundRect(x + 2, BUCKET_TOP, bw - 4, H - BUCKET_TOP - 8, 8); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    roundRect(x + 2, BUCKET_TOP, bw - 4, H - BUCKET_TOP - 8, 8); ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.font = `800 ${m >= 10 ? 15 : 17}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(m === 0 ? '✕' : '×' + fmt(m), x + bw / 2, BUCKET_TOP + 40);
+  }
+
+  // balls
+  for (const b of balls) {
+    for (let i = 0; i < b.trail.length; i++) {
+      const t = b.trail[i];
+      ctx.globalAlpha = (i / b.trail.length) * 0.25;
+      ctx.fillStyle = b.mult > 1 ? '#ff5d73' : '#7cf5ff';
+      ctx.beginPath(); ctx.arc(t.x, t.y, b.r * (0.4 + 0.6 * i / b.trail.length), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    drawBall(b.x, b.y, b.r, b.mult > 1);
+    if (b.pts > 0) {
+      ctx.font = '800 12px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(b.pts + (b.mult !== 1 ? ' ×' + fmt(b.mult) : ''), b.x, b.y - b.r - 3);
+    }
+  }
+
+  // particles
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life * 1.6);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  // floating texts
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const t of texts) {
+    ctx.globalAlpha = Math.min(1, t.life / t.max * 2);
+    ctx.font = `900 ${t.size}px system-ui, sans-serif`;
+    ctx.lineWidth = 4; ctx.strokeStyle = '#0d0b1a';
+    ctx.strokeText(t.text, t.x, t.y);
+    ctx.fillStyle = t.color;
+    ctx.fillText(t.text, t.x, t.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawBall(x, y, r, hot) {
+  const grd = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  grd.addColorStop(0, '#ffffff');
+  grd.addColorStop(1, hot ? '#ff5d73' : '#39c6d6');
+  ctx.shadowColor = hot ? '#ff5d73' : '#7cf5ff'; ctx.shadowBlur = 14;
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+}
+
+// ---------- Loop ----------
+let last = performance.now();
+function frame(now) {
+  let dt = Math.min(1 / 30, (now - last) / 1000);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function update(dt) {
+  time += dt;
+  if (mode === 'play') {
+    if (keys['ArrowLeft'] || keys['a']) aimX = clampAim(aimX - 380 * dt);
+    if (keys['ArrowRight'] || keys['d']) aimX = clampAim(aimX + 380 * dt);
+    dropCooldown = Math.max(0, dropCooldown - dt);
+    const SUB = 6;
+    for (let i = 0; i < SUB; i++) stepPhysics(dt / SUB);
+    for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); }
+    checkFloorEnd();
+  }
+  if (fl) for (const p of fl.pegs) p.flash = Math.max(0, p.flash - dt * 3);
+  for (let i = 0; i < BUCKET_COUNT; i++) bucketFlash[i] = Math.max(0, bucketFlash[i] - dt * 2);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const t = texts[i]; t.y -= 30 * dt; t.life -= dt;
+    if (t.life <= 0) texts.splice(i, 1);
+  }
+  shake = Math.max(0, shake - dt * 30);
+}
+
+// ---------- Boot ----------
+const best = store.get('best', null);
+if (best && best.floor) $('bestLine').textContent = `Best: floor ${best.floor} · ${best.score.toLocaleString()} total points`;
+// draw an idle board behind the start menu
+run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore: 0, bestBall: 0, rerolls: 0 };
+startFloor(); mode = 'menu'; showOverlay('ovStart');
+fitCanvas();
+requestAnimationFrame(frame);
+
+// debug/test hook
+window.__plinko = {
+  get state() { return { mode, run, fl, balls: balls.length }; },
+  simulateFloor(upgrades = {}, floor = 1, seedDrops) {
+    run = { floor, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };
+    startFloor();
+    const target = fl.target;
+    let guard = 0;
+    while (fl.ballsLeft > 0 && guard < 100) {
+      aimX = clampAim(seedDrops ? seedDrops(fl.ballsLeft) : 20 + Math.random() * 560);
+      fl.ballsLeft--; spawnBall(aimX);
+      let s = 0; while (balls.length && s < 60 * 30 * 6) { stepPhysics(1 / 360); s++; }
+      guard++;
+    }
+    const score = fl.score; mode = 'menu'; showOverlay('ovStart');
+    return { score, target };
+  },
+};
+})();
+</script>
+</body>
+</html>
