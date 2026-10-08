@@ -391,7 +391,9 @@ function draw() {
     if (ING[k.board.k] && ING[k.board.k].chopTo && k.chops) for (let i = 0; i < k.chops; i++) cbox(BOARD.x + 0.06, BOARD.y, BOARD.z - 0.05 + i * 0.022, 0.03, 0.01, 0.015, '#efe6f2');
   }
   // held item floats in front of the camera, lower right
-  if (k.held && N.active) {
+  const anchor = k.held && N.heldAnchor ? N.heldAnchor() : null; // third person: in the character's hands
+  if (k.held && anchor) drawItem(k.held, anchor.x, anchor.y, anchor.z, 'hand');
+  else if (k.held && N.active) {
     const p = N.P, cp = Math.cos(p.pitch);
     const fx = -Math.sin(p.yaw) * cp, fy = Math.sin(p.pitch), fz = -Math.cos(p.yaw) * cp;
     const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);

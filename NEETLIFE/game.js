@@ -229,6 +229,8 @@ function buildRoom() {
   prism(2.5, ROOM.h - 0.11, 2.0, 0.25, 0.06, '#fff6dc', 10, 3);
   // light switch
   box(1.55, 1.15, ROOM.d - 0.02, 0.08, 0.12, 0.02, '#f4f0e6');
+  thing('switch', () => S.lightOn ? 'Turn the lights off' : 'Turn the lights on', [1.47, 1.0, ROOM.d - 0.14, 1.71, 1.4, ROOM.d]);
+  thing('lamp', () => S.lampOn === false ? 'Turn the lamp on' : 'Turn the lamp off', [1.15, 0.5, 0.1, 1.43, 0.98, 0.4]);
 }
 
 // =====================================================================
@@ -237,8 +239,14 @@ function buildRoom() {
 const canvas = $('gl');
 const gl = canvas.getContext('webgl', { antialias: true }) || canvas.getContext('experimental-webgl');
 let prog, attr = {}, uni = {}, vertCount = 0, burnerGlow = [0.2, 0.2, 0.2];
+// Environment knobs (weather.js writes these every frame). glow[] holds colours for glow groups 6..11.
+const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {} };
+// Glow groups: 1 sky, 2 monitor, 3 ceiling bulb, 4 lamp, 5 burner, 6 sun/moon, 7 stars, 8 city lights, 9 clouds, 10 rain, 11 lightning
+const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11 };
 // module hooks (cooking.js etc. register into these)
-const hooks = { interact: [], update: [], draw: [], key: [], hud: [], fresh: [], speed: [] };
+const hooks = { interact: [], update: [], draw: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [] };
+// the active camera: first person by default; modules (character.js) may return {x,y,z,yaw,pitch,reach}
+function getCamera() { let c = null; for (const fn of hooks.camera) c = fn() || c; return c; }
 const VS = `
 attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute float aGlow;
 uniform mat4 uVP;
@@ -249,11 +257,15 @@ precision mediump float;
 varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
 uniform vec3 uAmbSky; uniform vec3 uAmbGround;
 uniform vec3 uLP[4]; uniform vec3 uLC[4];
-uniform vec3 uGlow1; uniform vec3 uGlow2; uniform vec3 uGlow3; uniform vec3 uGlow4; uniform vec3 uGlow5;
+uniform vec3 uGlow[12];
 uniform vec3 uWinPos; uniform vec3 uWinCol;
+uniform vec3 uSunDir; uniform vec3 uSunCol;
+// window opening on the north wall (z = 0): x 1.25..2.35, y 1.0..2.0, mullions at the centre lines
+const vec4 WIN = vec4(1.25, 2.35, 1.0, 2.0);
 void main() {
   if (vGlow > 0.5) {
-    vec3 g = vGlow < 1.5 ? uGlow1 : vGlow < 2.5 ? uGlow2 : vGlow < 3.5 ? uGlow3 : vGlow < 4.5 ? uGlow4 : uGlow5;
+    vec3 g = vec3(1.0);
+    for (int i = 1; i < 12; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
     gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25), 1.0); return;
   }
   vec3 n = normalize(vNor);
@@ -269,6 +281,16 @@ void main() {
   // window light: a soft area light from the north wall
   vec3 W = uWinPos - vPos; float wd = length(W); W /= wd;
   lit += uWinCol * max(dot(n, W), 0.0) / (1.0 + 0.6 * wd * wd);
+  // direct sun: trace from this point toward the sun; lit if the ray leaves through the window glass
+  if (uSunDir.z < -0.01 && vPos.z > 0.001) {
+    float t = -vPos.z / uSunDir.z;
+    vec3 q = vPos + uSunDir * t;
+    if (q.x > WIN.x && q.x < WIN.y && q.y > WIN.z && q.y < WIN.w) {
+      float mull = step(0.022, abs(q.x - 1.8)) * step(0.022, abs(q.y - 1.5));
+      float edge = smoothstep(0.0, 0.04, min(min(q.x - WIN.x, WIN.y - q.x), min(q.y - WIN.z, WIN.w - q.y)));
+      lit += uSunCol * max(dot(n, uSunDir), 0.0) * mull * edge;
+    }
+  }
   vec3 c = vCol * lit;
   c = c / (1.0 + c * 0.35);                 // soft tone map
   gl_FragColor = vec4(pow(c, vec3(0.92)), 1.0);
@@ -300,7 +322,7 @@ function initGL() {
   staticBufs = makeBufs(STATIC_G, gl.STATIC_DRAW);
   dynBufs = makeBufs(null, gl.DYNAMIC_DRAW);
   vertCount = STATIC_G.pos.length / 3;
-  for (const n of ['uVP', 'uAmbSky', 'uAmbGround', 'uGlow1', 'uGlow2', 'uGlow3', 'uGlow4', 'uGlow5', 'uWinPos', 'uWinCol']) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['uVP', 'uAmbSky', 'uAmbGround', 'uGlow', 'uWinPos', 'uWinCol', 'uSunDir', 'uSunCol']) uni[n] = gl.getUniformLocation(prog, n);
   uni.uLP = gl.getUniformLocation(prog, 'uLP'); uni.uLC = gl.getUniformLocation(prog, 'uLC');
   gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
 }
@@ -323,6 +345,15 @@ function skyAt(h) {
   }
   return hex(SKY[0][1]);
 }
+// sun direction (pointing from the room toward the sun) and colour by hour. Morning sun comes from the east (+x).
+function sunState(h) {
+  const up = Math.sin(Math.PI * (h - 6) / 13);           // 0 at 6:00 and 19:00
+  if (up <= 0) return { dir: [0, 1, 0], col: [0, 0, 0], k: 0 };
+  const dir = [(12.5 - h) * 0.2, 0.25 + up * 1.0, -1];
+  const l = Math.hypot(dir[0], dir[1], dir[2]); dir[0] /= l; dir[1] /= l; dir[2] /= l;
+  const warm = 1 - Math.min(1, up * 1.6);                 // golden near sunrise/sunset
+  return { dir, col: [1.0, 0.92 - 0.2 * warm, 0.78 - 0.38 * warm], k: Math.min(1, up * 3) * 1.5 };
+}
 function daylight(h) { // 0 at night, 1 at noon
   if (h < 5.5 || h > 20) return 0;
   if (h < 8) return (h - 5.5) / 2.5;
@@ -335,33 +366,52 @@ function render() {
   gl.clearColor(0.02, 0.02, 0.04, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   const aspect = canvas.width / canvas.height;
   const bob = Math.sin(P.bob) * 0.025;
-  const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), M4.view(P.x, P.y + bob, P.z, P.yaw, P.pitch));
+  const cam = getCamera();
+  const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), cam ? M4.view(cam.x, cam.y, cam.z, cam.yaw, cam.pitch) : M4.view(P.x, P.y + bob, P.z, P.yaw, P.pitch));
   gl.uniformMatrix4fv(uni.uVP, false, vp);
-  const ambK = 0.16 + 0.32 * day;
-  gl.uniform3fv(uni.uAmbSky, lerp3([0.18, 0.18, 0.28], [0.62, 0.62, 0.66], day).map(v => v * (0.6 + ambK)));
-  gl.uniform3fv(uni.uAmbGround, lerp3([0.1, 0.08, 0.1], [0.36, 0.3, 0.26], day));
-  // lights: ceiling (on at night), bedside lamp, monitor glow, fridge
-  const ceilOn = S.lightOn ? 1 : 0;
+  // weather: clouds grey out and darken the sky; lightning flashes everything
+  const cl = env.cloud, fl = env.flash;
+  const lum = sky[0] * 0.3 + sky[1] * 0.55 + sky[2] * 0.15;
+  let skyC = lerp3(sky, [lum * 0.85, lum * 0.88, lum * 0.95], cl * 0.85).map(v => v * (1 - 0.35 * cl * cl));
+  skyC = lerp3(skyC, [0.9, 0.92, 1.0], fl);
+  env.skyColor = skyC;
+  const dayK = day * (1 - 0.45 * cl);
+  const ambK = 0.16 + 0.32 * dayK;
+  gl.uniform3fv(uni.uAmbSky, lerp3([0.12, 0.12, 0.2], [0.62, 0.62, 0.66], dayK).map(v => v * (0.6 + ambK) + fl * 0.45));
+  gl.uniform3fv(uni.uAmbGround, lerp3([0.06, 0.05, 0.07], [0.36, 0.3, 0.26], dayK).map(v => v + fl * 0.2));
+  // lights: ceiling + bedside lamp (switchable; storms can flicker the power), monitor glow
+  const ceilOn = S.lightOn ? env.power : 0, lampOn = S.lampOn === false ? 0 : env.power;
   const mon = pcOpen ? [0.45, 0.6, 1.0] : [0.25, 0.35, 0.7];
   gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, 1.29, 0.95, 0.25, 3.45, 1.15, 0.45, 4.2, 1.0, 3.05]);
   gl.uniform3fv(uni.uLC, [
     1.25 * ceilOn, 1.12 * ceilOn, 0.92 * ceilOn,
-    0.55, 0.42, 0.25,
-    mon[0] * 0.5, mon[1] * 0.5, mon[2] * 0.5,
+    0.55 * lampOn, 0.42 * lampOn, 0.25 * lampOn,
+    mon[0] * 0.5 * env.power, mon[1] * 0.5 * env.power, mon[2] * 0.5 * env.power,
     0, 0, 0,
   ]);
   gl.uniform3fv(uni.uWinPos, [1.8, 1.5, -0.4]);
-  gl.uniform3fv(uni.uWinCol, sky.map(v => v * (0.25 + 1.4 * day)));
-  gl.uniform3fv(uni.uGlow1, sky.map(v => Math.min(1, v * 1.15)));
-  gl.uniform3fv(uni.uGlow2, internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]);
-  gl.uniform3fv(uni.uGlow3, ceilOn ? [1.0, 0.96, 0.85] : [0.55, 0.53, 0.5]);
-  gl.uniform3fv(uni.uGlow4, [1.0, 0.82, 0.55]);
-  gl.uniform3fv(uni.uGlow5, burnerGlow);
+  gl.uniform3fv(uni.uWinCol, skyC.map((v, i) => v * (0.25 + 1.4 * dayK) + fl * 1.6));
+  // the sun: comes in through the window as a patch of light when it's up and not hidden by cloud
+  const sun = sunState(h);
+  gl.uniform3fv(uni.uSunDir, sun.dir);
+  gl.uniform3fv(uni.uSunCol, sun.col.map(v => v * sun.k * Math.pow(1 - cl, 2.2)));
+  const glow = new Array(36).fill(0);
+  const setG = (i, c) => { glow[i * 3] = c[0]; glow[i * 3 + 1] = c[1]; glow[i * 3 + 2] = c[2]; };
+  setG(GLOW.SKY, skyC.map(v => Math.min(1, v * 1.15)));
+  setG(GLOW.MONITOR, (internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]).map(v => v * (0.2 + 0.8 * env.power)));
+  setG(GLOW.CEIL, ceilOn ? [1.0, 0.96, 0.85] : [0.45, 0.43, 0.4].map(v => v * (0.4 + dayK)));
+  setG(GLOW.LAMP, lampOn ? [1.0, 0.82, 0.55] : [0.5, 0.42, 0.32].map(v => v * (0.4 + dayK)));
+  setG(GLOW.BURNER, burnerGlow);
+  for (const [k, c] of Object.entries(env.glow)) setG(+k, c);
+  gl.uniform3fv(uni.uGlow, glow);
   bindBufs(staticBufs);
   gl.drawArrays(gl.TRIANGLES, 0, vertCount);
   // dynamic objects (food, held items, smoke...) are rebuilt every frame by modules
   const D = { pos: [], nor: [], col: [], glow: [] };
-  intoGeometry(D, () => { for (const fn of hooks.draw) fn(); });
+  intoGeometry(D, () => {
+    box(1.575, S.lightOn ? 1.215 : 1.175, ROOM.d - 0.035, 0.03, 0.03, 0.02, '#e2ddd0'); // switch toggle
+    for (const fn of hooks.draw) fn();
+  });
   if (D.pos.length) {
     for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, dynBufs[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(D[KEYS[name]]), gl.DYNAMIC_DRAW); }
     bindBufs(dynBufs);
@@ -408,10 +458,11 @@ function movePlayer(dt) {
   P.bob += dt * 9;
 }
 function pick() {
-  const cp = Math.cos(P.pitch);
-  const d = [-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp];
-  const o = [P.x, P.y, P.z];
-  let best = null, bt = 2.3;
+  const cam = getCamera() || { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch, reach: 0 };
+  const cp = Math.cos(cam.pitch);
+  const d = [-Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
+  const o = [cam.x, cam.y, cam.z];
+  let best = null, bt = 2.3 + (cam.reach || 0);
   for (const th of things) {
     let t0 = 0, t1 = bt, ok = true;
     for (let a = 0; a < 3; a++) {
@@ -422,7 +473,10 @@ function pick() {
       t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
       if (t0 > t1) { ok = false; break; }
     }
-    if (ok && t0 < bt) { bt = t0; best = th; }
+    if (ok && t0 < bt) {
+      if (cam.reach) { const hx = o[0] + d[0] * t0 - P.x, hz = o[2] + d[2] * t0 - P.z; if (Math.hypot(hx, hz) > 2.0) continue; }
+      bt = t0; best = th;
+    }
   }
   return best;
 }
@@ -491,7 +545,7 @@ function freshState() {
   return {
     t: 8 * 60,             // minutes since Day 1 00:00
     money: START_MONEY,
-    lightOn: true,
+    lightOn: true, lampOn: true,
     bills: Object.entries(BILL_DEFS).map(([id, d]) => ({ id, due: d.firstDue, paid: false, late: false })),
     tx: [{ t: 8 * 60, desc: 'Opening balance', amt: START_MONEY }],
     stats: { runs: 0, wins: 0, busts: 0, best: 0, wagered: 0, won: 0 },
@@ -597,9 +651,20 @@ const QUIPS = {
   bath: ['The bathroom. You were just in there. Probably.', 'The shower drips. You make a mental note to call the landlord. You won\'t.'],
   fridge: ['One energy drink, half a lemon and a mystery container. Living the dream.', 'The fridge hums at you judgementally.'],
 };
+let clickCtx = null;
+function clickSound() {
+  try {
+    clickCtx = clickCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const a = clickCtx, o = a.createOscillator(), gn = a.createGain();
+    o.type = 'square'; o.frequency.value = 1800; gn.gain.setValueAtTime(0.04, a.currentTime); gn.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.03);
+    o.connect(gn).connect(a.destination); o.start(); o.stop(a.currentTime + 0.04);
+  } catch (e) {}
+}
 function interact(id) {
   if (paused || sleeping) return;
   for (const fn of hooks.interact) if (fn(id)) return;
+  if (id === 'switch') { S.lightOn = !S.lightOn; clickSound(); save(); return; }
+  if (id === 'lamp') { S.lampOn = S.lampOn === false; clickSound(); save(); return; }
   if (id === 'pc') return openPC();
   if (id === 'bed') return sleep();
   if (id === 'window') {
@@ -767,8 +832,10 @@ function renderTitle() {
   const box = $('titleBtns'); box.innerHTML = '';
   const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; box.appendChild(b); };
   if (saved && !saved.evicted) mk(`Continue · Day ${dayOf(saved.t)} · ${money(saved.money)}`, '', () => begin(saved));
-  mk(saved && !saved.evicted ? 'New life' : 'Start', saved && !saved.evicted ? 'ghost' : '', () => begin(null));
+  mk(saved && !saved.evicted ? 'New life' : 'Start', saved && !saved.evicted ? 'ghost' : '', newLife);
+  if (window.neetDesktop) { mk('Fullscreen (F11)', 'ghost', () => window.neetDesktop.toggleFullscreen()); mk('Quit to desktop', 'ghost', () => { save(); window.neetDesktop.quit(); }); }
 }
+function newLife() { if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
 function begin(saved) {
   S = saved || freshState();
   for (const fn of hooks.fresh) fn(S);
@@ -780,8 +847,15 @@ function begin(saved) {
   if (!saved) setTimeout(() => toast('Your PC is on the desk. Rent is due Sunday.', '', 6000), 600);
 }
 $('btnResume').onclick = () => lockPointer();
+// desktop app (Electron): quit button on the pause screen too
+if (window.neetDesktop) {
+  const q = document.createElement('button'); q.className = 'btn ghost'; q.textContent = 'Quit to desktop';
+  q.onclick = () => { save(); window.neetDesktop.quit(); };
+  $('btnQuitTitle').after(q);
+  $('mobileNote').remove();
+}
 $('btnQuitTitle').onclick = () => { save(); started = false; paused = true; renderTitle(); showScreen('scTitle'); };
-$('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} begin(null); };
+$('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} newLife(); };
 
 let last = performance.now(), saveTimer = 0;
 function frame(now) {
@@ -814,7 +888,8 @@ requestAnimationFrame(frame);
 
 // ---- module API (see cooking.js) ----
 window.NEET = {
-  hooks, box, prism, thing, things, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC,
+  hooks, box, prism, quad, thing, things, env, begin, showScreen, renderTitle, lockPointer,
+  get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC,
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
   setBurnerGlow(c) { burnerGlow = c; },
