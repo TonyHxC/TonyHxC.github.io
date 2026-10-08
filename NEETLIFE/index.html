@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEETLIFE</title>
+<style>
+  :root {
+    --bg: #0b0a12; --panel: #17151f; --panel2: #221f2e; --line: #34304a;
+    --text: #f1eee6; --muted: #a39db8; --accent: #ffcf5a; --green: #6fe39a; --red: #ff6b6b; --blue: #6cb7ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, #000a 100%); }
+
+  /* HUD */
+  #hud { position: fixed; top: 14px; left: 14px; display: flex; gap: 8px; flex-wrap: wrap; pointer-events: none; }
+  .chip { background: #0d0c14cc; border: 1px solid #ffffff1a; border-radius: 10px; padding: 7px 12px; font-weight: 800; font-size: 15px; backdrop-filter: blur(4px); }
+  .chip.money { color: var(--green); }
+  .chip.warn { color: var(--red); }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; opacity: .7; pointer-events: none; box-shadow: 0 0 0 2px #0006; }
+  #crosshair.hot { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--accent); opacity: 1; }
+  #prompt { position: fixed; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); font-weight: 800; font-size: 15px;
+    background: #0d0c14cc; border: 1px solid #ffffff22; padding: 6px 12px; border-radius: 8px; white-space: nowrap; display: none; pointer-events: none; }
+  #prompt kbd { background: var(--accent); color: #111; border-radius: 4px; padding: 0 6px; margin-right: 6px; font-family: inherit; }
+  #toasts { position: fixed; right: 14px; top: 14px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; max-width: min(360px, 80vw); }
+  .toast { background: #0d0c14ee; border: 1px solid #ffffff22; border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    animation: tin .25s ease-out; transition: opacity .4s; }
+  .toast.bad { border-left-color: var(--red); } .toast.good { border-left-color: var(--green); }
+  @keyframes tin { from { transform: translateX(20px); opacity: 0; } }
+  #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .8s; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; letter-spacing: 2px; }
+  #fade.on { opacity: 1; pointer-events: all; }
+
+  /* Menus */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px;
+    background: radial-gradient(ellipse at center, #15122299 0%, #000c 100%); backdrop-filter: blur(2px); z-index: 10; }
+  .screen.show { display: flex; }
+  .card { width: 100%; max-width: 460px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 26px; text-align: center; box-shadow: 0 20px 60px #000a; }
+  .logo { font-size: 52px; font-weight: 950; letter-spacing: 4px; margin: 0; line-height: 1;
+    background: linear-gradient(180deg, #fff 10%, var(--accent) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tag { color: var(--muted); font-weight: 700; letter-spacing: 2px; font-size: 12px; text-transform: uppercase; margin: 8px 0 18px; }
+  .card p { color: var(--muted); line-height: 1.5; font-size: 14px; }
+  .btn { font: inherit; font-weight: 800; font-size: 16px; border: 0; border-radius: 10px; padding: 12px 20px; cursor: pointer;
+    background: var(--accent); color: #17130a; box-shadow: 0 4px 0 #a9822a; margin: 6px 4px 0; }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #a9822a; }
+  .btn.ghost { background: var(--panel2); color: var(--text); box-shadow: 0 4px 0 #0c0b12; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; text-align: left; font-size: 14px; margin: 14px auto; max-width: 300px; color: var(--muted); }
+  .keys b { color: var(--text); font-weight: 800; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+  .stat { background: var(--panel2); border-radius: 10px; padding: 10px; } .stat b { display: block; font-size: 22px; } .stat span { font-size: 12px; color: var(--muted); }
+
+  /* PC */
+  #pc { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #000d; z-index: 20; padding: 2vmin; }
+  #pc.show { display: flex; }
+  .monitor { width: min(1200px, 100%); height: min(760px, 100%); background: #111; border-radius: 18px; padding: 14px; box-shadow: 0 0 0 2px #2a2a2a, 0 30px 80px #000; display: flex; }
+  .screen-area { position: relative; flex: 1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
+    background: radial-gradient(ellipse at 30% 20%, #2c4a7a 0%, #172440 45%, #0c1222 100%); }
+  .desk { flex: 1; position: relative; padding: 18px; display: grid; grid-template-columns: repeat(auto-fill, 92px); grid-auto-rows: 100px; gap: 8px; align-content: start; }
+  .icon { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; text-align: center; text-shadow: 0 1px 2px #000; }
+  .icon:hover { background: #ffffff1a; }
+  .icon .ico { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 26px; box-shadow: 0 4px 10px #0006; }
+  .taskbar { height: 40px; background: #0b0f1bdd; border-top: 1px solid #ffffff1a; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 13px; font-weight: 700; }
+  .taskbar .start { background: var(--accent); color: #111; border-radius: 6px; padding: 4px 10px; font-weight: 900; letter-spacing: 1px; }
+  .taskbar .sp { flex: 1; }
+  .taskbar .money { color: var(--green); }
+  .taskbar button { font: inherit; font-size: 12px; font-weight: 800; color: var(--text); background: #ffffff14; border: 1px solid #ffffff22; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  .win { position: absolute; inset: 14px 14px 54px 14px; background: #f4f2ec; color: #1b1a22; border-radius: 10px; display: none; flex-direction: column; overflow: hidden; box-shadow: 0 20px 50px #0009; }
+  .win.show { display: flex; }
+  .win .bar { height: 34px; background: #24223a; color: #fff; display: flex; align-items: center; padding: 0 6px 0 12px; font-weight: 800; font-size: 13px; gap: 8px; }
+  .win .bar .x { margin-left: auto; width: 26px; height: 24px; border: 0; border-radius: 6px; background: #ff5f57; color: #fff; font-weight: 900; cursor: pointer; }
+  .win .body { flex: 1; overflow: auto; padding: 18px; }
+  .win.dark { background: #0d0b1a; color: #ece9ff; } .win.dark .body { padding: 0; }
+  .win h3 { margin: 0 0 6px; font-size: 20px; }
+  .win p { margin: 6px 0; color: #55536a; font-size: 14px; line-height: 1.45; }
+  .win table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+  .win th, .win td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd9cf; }
+  .win th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #7a7790; }
+  .win td.num, .win th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: #1b8a4a; font-weight: 700; } .neg { color: #c43a3a; font-weight: 700; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 99px; }
+  .pill.ok { background: #d6f5e1; color: #1b8a4a; } .pill.due { background: #fff1c9; color: #8a6510; } .pill.late { background: #ffd9d9; color: #b02a2a; }
+  .wbtn { font: inherit; font-weight: 800; font-size: 13px; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; background: #24223a; color: #fff; }
+  .wbtn:disabled { opacity: .35; cursor: not-allowed; }
+  .wbtn.gold { background: #e6b23a; color: #1b1405; }
+  .bets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .bets button { font: inherit; font-size: 18px; font-weight: 900; padding: 14px 18px; border-radius: 10px; border: 2px solid #24223a; background: #fff; color: #24223a; cursor: pointer; min-width: 84px; }
+  .bets button.on { background: #24223a; color: #ffcf5a; }
+  .bets button:disabled { opacity: .3; cursor: not-allowed; }
+  .casino { max-width: 640px; margin: 0 auto; }
+  .ladder { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 10px 0; }
+  .rung { background: #fff; border: 1px solid #ddd9cf; border-radius: 8px; padding: 6px; text-align: center; font-size: 12px; color: #7a7790; }
+  .rung b { display: block; color: #1b1a22; font-size: 15px; }
+  #plinkoFrame { flex: 1; width: 100%; border: 0; background: #0d0b1a; }
+  .result { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #000b; z-index: 3; }
+  .result.show { display: flex; }
+  .result .rbox { background: #f4f2ec; color: #1b1a22; border-radius: 14px; padding: 24px 28px; text-align: center; max-width: 380px; }
+  .result .big { font-size: 40px; font-weight: 950; margin: 6px 0; }
+  .offline { text-align: center; padding: 40px 10px; }
+  .offline .big { font-size: 46px; }
+  @media (max-width: 700px) { .monitor { padding: 6px; border-radius: 10px; } .win { inset: 6px 6px 46px 6px; } .logo { font-size: 40px; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="vignette"></div>
+<div id="crosshair"></div>
+<div id="prompt"></div>
+<div id="hud">
+  <div class="chip" id="hudClock">Mon · Day 1 · 8:00 AM</div>
+  <div class="chip money" id="hudMoney">$300</div>
+  <div class="chip warn" id="hudWarn" style="display:none"></div>
+</div>
+<div id="toasts"></div>
+<div id="fade"></div>
+
+<!-- Title -->
+<div class="screen show" id="scTitle"><div class="card">
+  <h1 class="logo">NEETLIFE</h1>
+  <div class="tag">One room. No job. Rent is due.</div>
+  <p>You live in a bachelor apartment and make money the only way you know how: gambling online. Keep the internet on, pay rent every week, and try not to get evicted.</p>
+  <div class="keys">
+    <b>W A S D</b><span>Move</span>
+    <b>Mouse</b><span>Look around</span>
+    <b>E / Click</b><span>Use things</span>
+    <b>F</b><span>Eat what you're holding</span>
+    <b>Esc</b><span>Pause</span>
+  </div>
+  <div id="titleBtns"></div>
+  <p id="mobileNote" style="display:none;color:var(--red)">NEETLIFE needs a keyboard and mouse for now.</p>
+</div></div>
+
+<!-- Pause -->
+<div class="screen" id="scPause"><div class="card">
+  <h2 style="margin:0 0 6px">Paused</h2>
+  <p>Time is frozen.</p>
+  <button class="btn" id="btnResume">Resume</button>
+  <button class="btn ghost" id="btnQuitTitle">Title screen</button>
+</div></div>
+
+<!-- Evicted -->
+<div class="screen" id="scEvicted"><div class="card">
+  <h1 class="logo" style="font-size:40px;background:linear-gradient(180deg,#fff,#ff6b6b);-webkit-background-clip:text;background-clip:text">EVICTED</h1>
+  <div class="tag">Your landlord changed the locks.</div>
+  <div class="stats" id="evStats"></div>
+  <button class="btn" id="btnNewLife">Start a new life</button>
+</div></div>
+
+<!-- PC -->
+<div id="pc"><div class="monitor"><div class="screen-area">
+  <div class="desk" id="desk">
+    <div class="icon" data-app="casino"><div class="ico" style="background:linear-gradient(135deg,#b98cff,#7cf5ff)">◉</div>Plinko Casino</div>
+    <div class="icon" data-app="bank"><div class="ico" style="background:linear-gradient(135deg,#6fe39a,#2a9d5c)">$</div>NeetBank</div>
+    <div class="icon" data-app="bills"><div class="ico" style="background:linear-gradient(135deg,#ffcf5a,#e0892a)">✉</div>Bills</div>
+    <div class="icon" id="iconLogoff"><div class="ico" style="background:linear-gradient(135deg,#555,#222)">⏻</div>Log off</div>
+  </div>
+
+  <div class="win" id="winCasino">
+    <div class="bar">◉ Plinko Casino <button class="x" data-close>✕</button></div>
+    <div class="body" id="casinoBody"></div>
+  </div>
+  <div class="win dark" id="winTable">
+    <div class="bar">◉ Plinko Casino · <span id="tableBet"></span> <button class="wbtn" id="btnForfeit" style="margin-left:auto;background:#ff5f57">Leave table</button></div>
+    <div class="body" style="display:flex;flex-direction:column;position:relative">
+      <iframe id="plinkoFrame" title="Plinko"></iframe>
+      <div class="result" id="result"><div class="rbox" id="resultBox"></div></div>
+    </div>
+  </div>
+  <div class="win" id="winBank">
+    <div class="bar">$ NeetBank <button class="x" data-close>✕</button></div>
+    <div class="body" id="bankBody"></div>
+  </div>
+  <div class="win" id="winBills">
+    <div class="bar">✉ Bills <button class="x" data-close>✕</button></div>
+    <div class="body" id="billsBody"></div>
+  </div>
+
+  <div class="taskbar">
+    <span class="start">NeetOS</span>
+    <button data-app="casino">◉ Casino</button>
+    <button data-app="bank">$ Bank</button>
+    <button data-app="bills">✉ Bills</button>
+    <span id="tbClock"></span>
+    <span class="sp"></span>
+    <span class="money" id="tbMoney"></span>
+    <button id="btnLogoff">Log off</button>
+  </div>
+</div></div></div>
+
+<script src="game.js"></script>
+<script src="cooking.js"></script>
+</body>
+</html>

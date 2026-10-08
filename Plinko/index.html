@@ -214,6 +214,7 @@
         <div><span class="dot" style="background:var(--red)"></span>Red peg: doubles that ball's multiplier</div>
         <div><span class="dot" style="background:#ff9a3c"></span>Bomb peg: triggers every peg nearby</div>
         <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
+        <div><span class="dot" style="background:#4fb3ff"></span>Electric peg: charges the ball; it shoots lightning when it lands</div>
       </div>
       <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Every 5th floor is a boss with a nasty twist.</p>
       <p><a class="link" href="guide.html" target="_blank">Full player guide ↗</a></p>
@@ -260,6 +261,10 @@
         <button class="btn secondary" id="btnBuyBall">+1 ball next floor</button>
         <button class="btn secondary" id="btnSkip">Skip (+4 ●)</button>
       </div>
+      <div id="neetCashRow" style="display:none;margin-top:10px">
+        <button class="btn" id="btnCashOut" style="background:var(--gold);box-shadow:0 4px 0 #b8902f">Cash out</button>
+        <p class="board-note" id="neetCashNote" style="margin-top:6px"></p>
+      </div>
     </div></div>
 
     <div class="overlay" id="ovOver"><div class="box">
@@ -268,7 +273,7 @@
       <div class="stats" id="overStats"></div>
       <p class="submit-line" id="submitLine"></p>
       <button class="btn" id="btnRestart">New Run</button>
-      <div>
+      <div id="overBtns">
         <button class="btn secondary" id="btnOverBoard">Leaderboard</button>
         <button class="btn secondary" id="btnOverMenu">Main Menu</button>
       </div>
@@ -308,6 +313,14 @@ const store = {
 const SUPABASE_URL = 'https://hkfyyhnujjuktqovnsby.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_f2J4z9X9m_ex2G_vIuHqQw_rE9MKl3r'; // the anon / publishable key (safe to expose)
 const ONLINE = !!(SUPABASE_URL && SUPABASE_KEY);
+
+// ---------- NEETLIFE embed mode ----------
+// When loaded as /Plinko/index.html?neet=1 inside NEETLIFE, runs are paid bets:
+// the apartment sends {type:'neetStart', bet, table}; we report cash-outs and busts back.
+const NEET = new URLSearchParams(location.search).has('neet');
+const neet = { bet: 0, table: [], active: false };
+function neetPost(msg) { try { window.parent.postMessage(Object.assign({ src: 'plinko' }, msg), '*'); } catch (e) {} }
+function neetCashFor(cleared) { const t = neet.table; if (!cleared) return 0; return Math.round(neet.bet * (t[Math.min(cleared, t.length - 1)] * (cleared >= t.length ? Math.pow(1.25, cleared - t.length + 1) : 1))); }
 
 // ---------- Player identity (no login) ----------
 function readCookie(k) { const m = document.cookie.match('(?:^|; )' + k + '=([^;]*)'); return m ? decodeURIComponent(m[1]) : null; }
@@ -421,6 +434,7 @@ const UPGRADES = [
   { id: 'interest',name: 'Interest',     icon: '¢', rarity: 'common', max: 3, desc: 'After each floor, +1 coin per 5 you hold (up to +3 per level).' },
   { id: 'crit',    name: 'Red Pegs',     icon: '✚', rarity: 'rare',   max: 5, desc: '+1 red peg. Red pegs double the ball\'s multiplier.' },
   { id: 'bomb',    name: 'Bomb Pegs',    icon: '✹', rarity: 'rare',   max: 4, desc: '+1 bomb peg. Bombs trigger every peg nearby.' },
+  { id: 'storm',   name: 'Storm Pegs',   icon: 'ϟ', rarity: 'rare',   max: 4, desc: '+1 electric peg. Electric pegs charge the ball; charged balls unleash lightning when they land.' },
   { id: 'split',   name: 'Splitter',     icon: '⑂', rarity: 'rare',   max: 4, desc: '+1 splitter peg. Splitters clone the ball.' },
   { id: 'extra',   name: 'Extra Ball',   icon: '+', rarity: 'rare',   max: 4, desc: '+1 ball on every floor.' },
   { id: 'edge',    name: 'Edge Lord',    icon: '⇔', rarity: 'rare',   max: 3, desc: 'The 2 outer buckets on each side get +100% multiplier.' },
@@ -484,6 +498,7 @@ function startFloor(keepLayout) {
     const dimF = boss && boss.id === 'dim' ? 0.5 : 1;
     const counts = {
       gold: Math.round((3 + 2 * U('gold')) * dimF),
+      elec: Math.round((2 + U('storm')) * dimF),
       red: Math.round((1 + U('crit')) * dimF),
       bomb: Math.round(U('bomb') * dimF),
       split: Math.round(U('split') * dimF),
@@ -504,7 +519,7 @@ function startFloor(keepLayout) {
     mults = mults.map(m => Math.round(m * 10) / 10);
   }
   fl = { pegs, mults, boss, target: targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
-  balls = []; particles = []; texts = []; fire = []; eruptions = []; eruptHoldUntil = 0;
+  balls = []; particles = []; texts = []; fire = []; eruptions = []; eruptHoldUntil = 0; bolts = []; zaps = [];
   mode = 'play';
   for (const p of pegs) p.flash = 0;
   showOverlay(null);
@@ -543,7 +558,7 @@ function burst(x, y, color, n = 10, spd = 160) {
   }
 }
 
-const PEG_COLORS = { normal: '#cfc8ff', gold: '#ffd166', red: '#ff5d73', bomb: '#ff9a3c', split: '#6bff9e' };
+const PEG_COLORS = { normal: '#cfc8ff', gold: '#ffd166', red: '#ff5d73', bomb: '#ff9a3c', split: '#6bff9e', elec: '#4fb3ff' };
 
 function scorePeg(b, p, chain) {
   const v = pegValue();
@@ -588,6 +603,8 @@ function hitPeg(b, p) {
     burst(p.x, p.y, '#ff9a3c', 30, 280);
     sfx(90, 0.3, 'sawtooth', 0.12);
     shake = Math.max(shake, 10);
+  } else if (p.type === 'elec') {
+    chargeBall(b, p);
   } else if (p.type === 'split') {
     const clones = balls.filter(x => x.clone).length;
     if (clones < 8) {
@@ -615,7 +632,9 @@ function settle(b) {
   addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
   burst(cx, BUCKET_TOP + 20, col, m >= 4 ? 30 : 12, m >= 4 ? 260 : 140);
   bucketFlash[i] = 1;
-  if ((b.fireTier || 0) > 0 && m >= ERUPT_MIN_BUCKET) startEruption(i, b.fireTier, m);
+  const er = eruptionFor(b, m, total);
+  if (er) startEruption(i, er.tier, er.power);
+  if (b.charge) startLightning(i, b.charge);
   if (m >= 4) { shake = Math.max(shake, 8); sfx(1046, 0.25, 'triangle', 0.08); setTimeout(() => sfx(1568, 0.25, 'triangle', 0.06), 90); }
   else sfx(m === 0 ? 120 : 523, 0.15, 'triangle', 0.06);
   updateHUD();
@@ -678,7 +697,7 @@ function stepPhysics(dt) {
 }
 
 function checkFloorEnd() {
-  if (mode !== 'play' || balls.length || eruptions.length || time < eruptHoldUntil) return;
+  if (mode !== 'play' || balls.length || eruptions.length || zaps.length || time < eruptHoldUntil) return;
   if (fl.score >= fl.target) floorCleared();
   else if (fl.ballsLeft <= 0) floorFailed();
 }
@@ -700,6 +719,12 @@ function floorCleared() {
   $('rewardInfo').innerHTML = `${parts.join(' · ')}<br>Choose an upgrade. Next target: <b style="color:var(--text)">${targetFor(run.floor + 1)}</b>${(run.floor + 1) % 5 === 0 ? ' <b style="color:var(--red)">(BOSS)</b>' : ''}`;
   sfx(784, 0.15, 'triangle', 0.08); setTimeout(() => sfx(1046, 0.25, 'triangle', 0.08), 120);
   rollOffer();
+  if (NEET && neet.active) {
+    const cleared = run.floor, now = neetCashFor(cleared), next = neetCashFor(cleared + 1);
+    $('neetCashRow').style.display = '';
+    $('btnCashOut').textContent = `Cash out $${now.toLocaleString()}`;
+    $('neetCashNote').textContent = `Or pick an upgrade and push on: clear floor ${cleared + 1} for $${next.toLocaleString()}. Bust and you lose your $${neet.bet} bet.`;
+  }
   showOverlay('ovReward');
   updateHUD();
 }
@@ -714,6 +739,7 @@ function floorFailed() {
   }
   mode = 'over';
   saveBest();
+  if (NEET && neet.active) { neet.active = false; neetPost({ type: 'neetBust', floor: run.floor, score: run.totalScore }); }
   const best = store.get('best', { floor: 0, score: 0 });
   $('overInfo').innerHTML = `You scored <b style="color:var(--text)">${fl.score}</b> of <b style="color:var(--text)">${fl.target}</b> on floor ${run.floor}.`;
   $('overStats').innerHTML = `
@@ -722,11 +748,13 @@ function floorFailed() {
     <div class="stat"><b>${run.bestBall.toLocaleString()}</b><span>Best single ball</span></div>
     <div class="stat"><b>${best.floor}</b><span>Best floor ever</span></div>`;
   sfx(196, 0.4, 'sawtooth', 0.06);
+  if (NEET) { $('btnRestart').style.display = 'none'; $('overBtns').style.display = 'none'; }
   showOverlay('ovOver');
   submitRun();
 }
 
 async function submitRun() {
+  if (!player.name) return;
   const r = { floor: run.floor, score: run.totalScore, bestBall: run.bestBall };
   const line = $('submitLine');
   line.style.color = 'var(--accent)';
@@ -786,7 +814,7 @@ function takeUpgrade(id) {
   sfx(988, 0.12, 'square', 0.04);
   nextFloor();
 }
-function nextFloor() { run.floor++; startFloor(); }
+function nextFloor() { $('neetCashRow').style.display = 'none'; run.floor++; startFloor(); }
 
 $('btnReroll').onclick = () => { const rc = 2 + run.rerolls; if (run.coins < rc) return; run.coins -= rc; run.rerolls++; rollOffer(); sfx(600, 0.06); };
 $('btnBuyBall').onclick = () => { if (run.coins < 6) return; run.coins -= 6; run.bonusBalls++; refreshShopButtons(); sfx(700, 0.06); };
@@ -831,7 +859,26 @@ function startPlay() {
   paused = null; sfx(440, 0.05); newRun();
 }
 
-$('menuBtn').onclick = () => { if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
+$('btnCashOut').onclick = () => {
+  if (!NEET || !neet.active || mode !== 'reward') return;
+  neet.active = false; mode = 'over';
+  neetPost({ type: 'neetCashOut', cleared: run.floor, score: run.totalScore });
+  showOverlay(null);
+  sfx(1318, 0.12, 'square', 0.05); setTimeout(() => sfx(1760, 0.2, 'square', 0.05), 90);
+};
+if (NEET) {
+  window.addEventListener('message', e => {
+    const d = e.data || {};
+    if (d.src !== 'neetlife') return;
+    if (d.type === 'neetStart') {
+      neet.bet = d.bet; neet.table = d.table; neet.active = true;
+      paused = null; newRun();
+      $('neetCashRow').style.display = 'none';
+    }
+    if (d.type === 'neetMute') { muted = !!d.muted; updateMuteLabel(); }
+  });
+}
+$('menuBtn').onclick = () => { if (NEET) return; if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
 $('btnPlay').onclick = startPlay;
 $('btnResume').onclick = resumeRun;
 $('btnMenuBoard').onclick = () => { menuReturn = 'ovMenu'; showBoard(); };
@@ -947,6 +994,7 @@ const keys = {};
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   keys[e.key] = true;
+  if (e.key === 'Escape' && NEET) return;
   if (e.key === 'Escape') { if (mode === 'paused') resumeRun(); else if (mode === 'play' || mode === 'reward') openMenu(); return; }
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
 });
@@ -1165,16 +1213,30 @@ function emitBallFire(b, dt) {
       b.r * (1.0 + 0.35 * t) * (0.7 + Math.random() * 0.6), 0.3 + Math.random() * 0.25 + t * 0.05, t);
   }
 }
-function startEruption(bucketIdx, tier, mult) {
+// Decide whether a landing ball makes its bucket erupt, and how big.
+// Two triggers: a burning ball in a big bucket, or any ball scoring >= 50% of the floor target.
+const FIRE_SCORE_FRAC = 0.5;
+function eruptionFor(b, m, total) {
+  const frac = fl.target > 0 ? total / fl.target : 0;
+  const fireT = b.fireTier || 0;
+  let power = 0, tier = 0;
+  if (fireT > 0 && m >= ERUPT_MIN_BUCKET) { power = Math.min(1.9, 0.75 + fireT * 0.25 + Math.min(m, 20) * 0.03); tier = fireT; }
+  if (frac >= FIRE_SCORE_FRAC) {
+    const p = Math.min(2.1, 0.5 + (frac - FIRE_SCORE_FRAC) * 2.2); // 50% -> modest column, 100%+ -> towering blast
+    if (p > power) power = p;
+    tier = Math.max(tier, frac >= 1 ? 2 : 1);           // a ball that clears the floor alone burns blue
+  }
+  return power > 0 ? { power, tier } : null;
+}
+function startEruption(bucketIdx, tier, power) {
   const bw = (WALL_R - WALL_L) / BUCKET_COUNT;
   const x0 = WALL_L + bucketIdx * bw + 6, x1 = x0 + bw - 12;
-  const power = Math.min(1.9, 0.75 + tier * 0.25 + Math.min(mult, 20) * 0.03);
-  const dur = 0.7 + tier * 0.25;
+  const dur = 0.35 + power * 0.45 + tier * 0.1;
   eruptions.push({ x0, x1, t: 0, dur, tier, power, idx: bucketIdx });
   eruptHoldUntil = Math.max(eruptHoldUntil, time + dur + 1.0);
-  shake = Math.max(shake, 10 + tier * 4);
-  sfxNoise(dur + 0.6, 0.16 + tier * 0.04, 500 + tier * 150);
-  sfx(70, 0.6, 'sawtooth', 0.1);
+  shake = Math.max(shake, 4 + power * 7);
+  sfxNoise(dur + 0.5, 0.06 + power * 0.07, 400 + power * 250);
+  if (power > 1) sfx(70, 0.6, 'sawtooth', 0.1);
 }
 function updateFire(dt) {
   // eruptions feed the fire column
@@ -1256,6 +1318,110 @@ function sfxNoise(dur, vol, freq) {
   } catch (e) {}
 }
 
+// ---------- Electricity ----------
+const MAX_CHARGE = 5;
+let bolts = [], zaps = [];
+function chargeBall(b, p) {
+  if ((b.charge || 0) >= MAX_CHARGE) return;
+  b.charge = (b.charge || 0) + 1;
+  addText(b.x, b.y - 34, b.charge === 1 ? 'CHARGED!' : `⚡${b.charge}`, '#fff27a', 13 + b.charge * 1.5, 0.9);
+  addBolt(p.x, p.y, b.x, b.y, 0.18, 2);
+  sfxNoise(0.12, 0.05, 7000); sfx(1800 + b.charge * 200, 0.05, 'square', 0.03);
+}
+// jagged lightning path by midpoint displacement
+function boltPath(x1, y1, x2, y2, rough) {
+  let pts = [[x1, y1], [x2, y2]];
+  let off = Math.hypot(x2 - x1, y2 - y1) * rough;
+  for (let gen = 0; gen < 5; gen++) {
+    const next = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
+      const o = (Math.random() - 0.5) * off;
+      next.push([(ax + bx) / 2 - dy / L * o, (ay + by) / 2 + dx / L * o], pts[i + 1]);
+    }
+    pts = next; off *= 0.5;
+  }
+  return pts;
+}
+function addBolt(x1, y1, x2, y2, life = 0.22, width = 2.5) {
+  bolts.push({ x1, y1, x2, y2, life, max: life, width, pts: boltPath(x1, y1, x2, y2, 0.35) });
+}
+// lightning bursts out of the bucket and chains peg to peg
+function startLightning(bucketIdx, charge) {
+  const bw = (WALL_R - WALL_L) / BUCKET_COUNT;
+  const cx = WALL_L + (bucketIdx + 0.5) * bw;
+  const chains = 1 + charge, steps = 2 + charge * 2;
+  for (let c = 0; c < chains; c++) zaps.push({ x: cx + (Math.random() - 0.5) * bw * 0.6, y: BUCKET_TOP + 4, wait: c * 0.07, steps, used: new Set(), timer: 0 });
+  eruptHoldUntil = Math.max(eruptHoldUntil, time + 0.5 + charge * 0.2);
+  bucketFlash[bucketIdx] = 1;
+  shake = Math.max(shake, 3 + charge * 1.5);
+  sfxNoise(0.3 + charge * 0.08, 0.07 + charge * 0.02, 8000); sfx(90, 0.2, 'square', 0.05);
+}
+function updateElectric(dt) {
+  for (let i = zaps.length - 1; i >= 0; i--) {
+    const z = zaps[i];
+    if (z.wait > 0) { z.wait -= dt; continue; }
+    z.timer -= dt;
+    if (z.timer > 0) continue;
+    // jump to a nearby peg, preferring ones above
+    let best = null, bs = Infinity;
+    for (const p of fl.pegs) {
+      if (z.used.has(p.id)) continue;
+      const dx = p.x - z.x, dy = p.y - z.y, d = Math.hypot(dx, dy);
+      if (d > 105 || d < 8) continue;
+      const score = d + (dy > 0 ? 120 : 0) + Math.random() * 40;
+      if (score < bs) { bs = score; best = p; }
+    }
+    if (!best || z.steps <= 0) { zaps.splice(i, 1); continue; }
+    addBolt(z.x, z.y, best.x, best.y, 0.28, 2.6);
+    best.flash = 1; best.zap = 1; z.used.add(best.id);
+    burst(best.x, best.y, '#fff27a', 4, 120);
+    z.x = best.x; z.y = best.y; z.steps--; z.timer = 0.045;
+    if (Math.random() < 0.25) sfx(2400 + Math.random() * 1200, 0.03, 'square', 0.025);
+  }
+  for (let i = bolts.length - 1; i >= 0; i--) {
+    const bo = bolts[i]; bo.life -= dt;
+    if (bo.life <= 0) { bolts.splice(i, 1); continue; }
+    if (Math.random() < 0.5) bo.pts = boltPath(bo.x1, bo.y1, bo.x2, bo.y2, 0.35); // flicker
+  }
+  if (fl) for (const p of fl.pegs) if (p.zap) p.zap = Math.max(0, p.zap - dt * 2.5);
+  // idle crackle on electric pegs so they read as 'live'
+  if (fl) for (const p of fl.pegs) if (p.type === 'elec' && Math.random() < dt * 1.8) {
+    const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 8;
+    addBolt(p.x, p.y, p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0.09, 1.2);
+  }
+}
+function strokePath(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); }
+function drawElectric() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = ctx.lineJoin = 'round';
+  for (const bo of bolts) {
+    const a = bo.life / bo.max;
+    ctx.globalAlpha = a * 0.35; ctx.strokeStyle = '#7cdcff'; ctx.lineWidth = bo.width * 4; strokePath(bo.pts);
+    ctx.globalAlpha = a * 0.9; ctx.strokeStyle = '#fff6b0'; ctx.lineWidth = bo.width; strokePath(bo.pts);
+    ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = bo.width * 0.45; strokePath(bo.pts);
+  }
+  // crackling arcs around charged balls
+  for (const b of balls) {
+    const c = b.charge || 0; if (!c) continue;
+    for (let k = 0; k < c + 1; k++) {
+      if (Math.random() < 0.15) continue;
+      const a0 = Math.random() * Math.PI * 2, a1 = a0 + (0.6 + Math.random() * 1.2) * (Math.random() < 0.5 ? -1 : 1);
+      const r0 = b.r * (0.9 + Math.random() * 0.2), r1 = b.r * (1.7 + Math.random() * 0.6 + c * 0.18);
+      const pts = boltPath(b.x + Math.cos(a0) * r0, b.y + Math.sin(a0) * r0, b.x + Math.cos(a1) * r1, b.y + Math.sin(a1) * r1, 0.5);
+      ctx.globalAlpha = 0.55; ctx.strokeStyle = '#7cdcff'; ctx.lineWidth = 5; strokePath(pts);
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#fffbd0'; ctx.lineWidth = 1.8; strokePath(pts);
+    }
+    const R = b.r * (2.2 + 0.25 * c);
+    const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.6, b.x, b.y, R);
+    g.addColorStop(0, `rgba(255,245,150,${0.35 + 0.08 * c})`); g.addColorStop(0.5, 'rgba(120,210,255,0.18)'); g.addColorStop(1, 'rgba(120,210,255,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ---------- Render ----------
 function draw() {
   ctx.save();
@@ -1308,6 +1474,12 @@ function draw() {
       ctx.beginPath(); ctx.arc(p.x, p.y, rr + 1, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 1; ctx.shadowBlur = 0;
     }
+    if (p.zap > 0.02) {
+      ctx.shadowColor = '#7cdcff'; ctx.shadowBlur = 18 * p.zap;
+      ctx.globalAlpha = p.zap; ctx.fillStyle = '#fffbd0';
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr + 2 * p.zap, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
     if (p.flash > 0) {
       ctx.globalAlpha = p.flash * 0.6; ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(p.x, p.y, rr * 0.7, 0, Math.PI * 2); ctx.fill();
@@ -1335,6 +1507,7 @@ function draw() {
 
   // fire (ball flames + eruptions), additive
   drawFire();
+  drawElectric();
 
   // balls
   for (const b of balls) {
@@ -1453,7 +1626,7 @@ function update(dt) {
     for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); igniteCheck(b); emitBallFire(b, dt); }
     checkFloorEnd();
   }
-  if (mode !== 'paused') updateFire(dt);
+  if (mode !== 'paused') { updateFire(dt); if (fl) updateElectric(dt); }
   if (fl) for (const p of fl.pegs) p.flash = Math.max(0, p.flash - dt * 3);
   for (let i = 0; i < BUCKET_COUNT; i++) bucketFlash[i] = Math.max(0, bucketFlash[i] - dt * 2);
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -1475,8 +1648,14 @@ run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore
 startFloor(); mode = 'menu';
 if (player.name) setName(player.name);
 loadSkin(store.get('ballArt', null), drawMenuIcon);
-openMenu();
-if (!player.name) askName(() => showOverlay('ovMenu'));
+if (NEET) {
+  $('menuBtn').style.display = 'none';
+  mode = 'menu'; showOverlay(null);
+  neetPost({ type: 'neetReady' });
+} else {
+  openMenu();
+  if (!player.name) askName(() => showOverlay('ovMenu'));
+}
 fitCanvas();
 requestAnimationFrame(frame);
 
@@ -1487,7 +1666,9 @@ window.__plinko = {
   testSmack,
   get fireCount() { return fire.length; },
   ignite(m) { const b = balls[balls.length - 1]; if (b) b.mult = m; },
-  erupt(i, tier, m) { startEruption(i, tier, m); },
+  erupt(i, tier, power) { startEruption(i, tier, power); },
+  charge(c) { const b = balls[balls.length - 1]; if (b) b.charge = c; },
+  zap(i, c) { startLightning(i, c); },
   simSwipe(ax, ay, bx, by, ms) { const t = performance.now(); trail = [{ x: ax, y: ay, t: t - ms }, { x: bx, y: by, t }]; swipeCheck({ x: ax, y: ay }, { x: bx, y: by }); },
   simulateFloor(upgrades = {}, floor = 1, seedDrops) {
     run = { floor, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };

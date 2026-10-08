@@ -1,0 +1,846 @@
+// NEETLIFE — a tiny first-person life sim.
+// Rendering is a small hand-rolled WebGL engine (no dependencies): the room is built from
+// boxes merged into one static mesh, lit by a few point lights plus a time-of-day ambient.
+(() => {
+'use strict';
+
+const $ = id => document.getElementById(id);
+
+// =====================================================================
+// Math
+// =====================================================================
+const M4 = {
+  persp(fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+    return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
+  },
+  mul(a, b) {
+    const o = new Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    }
+    return o;
+  },
+  // view matrix from position, yaw (around Y) and pitch (around X)
+  view(px, py, pz, yaw, pitch) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    // camera basis: forward f, right r, up u
+    const fx = -sy * cp, fy = sp, fz = -cy * cp;
+    const rx = cy, ry = 0, rz = -sy;
+    const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    return [rx, ux, -fx, 0, ry, uy, -fy, 0, rz, uz, -fz, 0,
+      -(rx * px + ry * py + rz * pz), -(ux * px + uy * py + uz * pz), (fx * px + fy * py + fz * pz), 1];
+  },
+};
+const hex = h => { let x = h.slice(1); if (x.length === 3) x = x.replace(/./g, c => c + c); const n = parseInt(x, 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+
+// =====================================================================
+// Geometry builder: boxes / prisms with flat normals, per-vertex colour and a "glow group"
+// (0 = lit normally, 1 = sky, 2 = monitor, 3 = ceiling bulb, 4 = lamp bulb, 5 = fridge light)
+// =====================================================================
+let G = { pos: [], nor: [], col: [], glow: [] };   // current build target (static room by default)
+const STATIC_G = G;
+function intoGeometry(target, fn) { const prev = G; G = target; try { fn(); } finally { G = prev; } }
+function quad(p0, p1, p2, p3, n, c, g) {
+  for (const p of [p0, p1, p2, p0, p2, p3]) { G.pos.push(p[0], p[1], p[2]); G.nor.push(n[0], n[1], n[2]); G.col.push(c[0], c[1], c[2]); G.glow.push(g); }
+}
+// axis-aligned box from min corner (x,y,z) and size (w,h,d). `skip` lists faces to omit.
+function box(x, y, z, w, h, d, color, glow = 0, skip = '') {
+  const c = typeof color === 'string' ? hex(color) : color;
+  const X = x + w, Y = y + h, Z = z + d;
+  // small per-face shade variation gives the low-poly look some life
+  const sh = (k) => [c[0] * k, c[1] * k, c[2] * k];
+  if (!skip.includes('t')) quad([x, Y, z], [x, Y, Z], [X, Y, Z], [X, Y, z], [0, 1, 0], sh(1), glow);
+  if (!skip.includes('b')) quad([x, y, z], [X, y, z], [X, y, Z], [x, y, Z], [0, -1, 0], sh(0.9), glow);
+  if (!skip.includes('n')) quad([X, y, z], [x, y, z], [x, Y, z], [X, Y, z], [0, 0, -1], sh(0.96), glow);
+  if (!skip.includes('s')) quad([x, y, Z], [X, y, Z], [X, Y, Z], [x, Y, Z], [0, 0, 1], sh(0.96), glow);
+  if (!skip.includes('w')) quad([x, y, Z], [x, Y, Z], [x, Y, z], [x, y, z], [-1, 0, 0], sh(0.93), glow);
+  if (!skip.includes('e')) quad([X, y, z], [X, Y, z], [X, Y, Z], [X, y, Z], [1, 0, 0], sh(0.93), glow);
+}
+// vertical n-sided prism (cans, lamp stems, bins)
+function prism(cx, y, cz, r, h, color, sides = 8, glow = 0) {
+  const c = typeof color === 'string' ? hex(color) : color;
+  for (let i = 0; i < sides; i++) {
+    const a0 = i / sides * Math.PI * 2, a1 = (i + 1) / sides * Math.PI * 2, am = (a0 + a1) / 2;
+    const x0 = cx + Math.cos(a0) * r, z0 = cz + Math.sin(a0) * r, x1 = cx + Math.cos(a1) * r, z1 = cz + Math.sin(a1) * r;
+    quad([x0, y, z0], [x0, y + h, z0], [x1, y + h, z1], [x1, y, z1], [Math.cos(am), 0, Math.sin(am)], c, glow);
+    G.pos.push(cx, y + h, cz, x1, y + h, z1, x0, y + h, z0);
+    for (let k = 0; k < 3; k++) { G.nor.push(0, 1, 0); G.col.push(c[0], c[1], c[2]); G.glow.push(glow); }
+  }
+}
+
+// =====================================================================
+// The apartment (metres). x: 0..5 west→east, z: 0..4 north→south, y: 0..2.6
+// =====================================================================
+const ROOM = { w: 5, d: 4, h: 2.6 };
+const solids = [];       // XZ rectangles the player can't walk through: [x0,z0,x1,z1]
+const things = [];       // interactables: {id, prompt, box:[x0,y0,z0,x1,y1,z1]}
+const solid = (x0, z0, x1, z1) => solids.push([x0, z0, x1, z1]);
+const thing = (id, prompt, b) => things.push({ id, prompt, box: b });
+
+function buildRoom() {
+  const T = 0.12; // wall thickness
+  const wall = '#d9cfbd', wall2 = '#cfc4b0', trim = '#efe8da';
+  // floor (planks) and ceiling
+  for (let i = 0; i < 10; i++) box(0, -0.1, i * 0.4, ROOM.w, 0.1, 0.4, i % 2 ? '#8a6544' : '#94704d');
+  box(0, ROOM.h, 0, ROOM.w, 0.1, ROOM.d, '#e9e4da');
+  // north wall with a window hole (x 1.25..2.35, y 1.0..2.0)
+  const wx0 = 1.25, wx1 = 2.35, wy0 = 1.0, wy1 = 2.0;
+  box(0, 0, -T, wx0, ROOM.h, T, wall);
+  box(wx1, 0, -T, ROOM.w - wx1, ROOM.h, T, wall);
+  box(wx0, 0, -T, wx1 - wx0, wy0, T, wall);
+  box(wx0, wy1, -T, wx1 - wx0, ROOM.h - wy1, T, wall);
+  // window frame + sill + sky panel behind
+  box(wx0 - 0.05, wy0 - 0.06, -0.02, wx1 - wx0 + 0.1, 0.06, 0.12, trim);
+  box(wx0 - 0.05, wy1, -0.02, wx1 - wx0 + 0.1, 0.05, 0.06, trim);
+  box(wx0 - 0.05, wy0, -0.02, 0.05, wy1 - wy0, 0.06, trim);
+  box(wx1, wy0, -0.02, 0.05, wy1 - wy0, 0.06, trim);
+  box((wx0 + wx1) / 2 - 0.02, wy0, -0.03, 0.04, wy1 - wy0, 0.04, trim);
+  box(wx0, (wy0 + wy1) / 2 - 0.02, -0.03, wx1 - wx0, 0.04, 0.04, trim);
+  box(wx0 - 2.5, wy0 - 1.5, -0.9, wx1 - wx0 + 5, wy1 - wy0 + 3, 0.05, '#ffffff', 1, 'nwetb'); // sky
+  // city silhouette in front of the sky (dark boxes, lit by sky ambient only)
+  const bld = [[-1.6, 0.9], [-1.3, 0.6], [-1.0, 0.75], [-0.65, 0.5], [-0.3, 0.55], [0.0, 0.8], [0.25, 0.45], [0.45, 0.95], [0.7, 0.6], [0.95, 0.75], [1.15, 0.5], [1.35, 0.85], [1.6, 0.7], [1.9, 1.0], [2.2, 0.55]];
+  for (const [bx, bh] of bld) box(wx0 + bx, wy0 - 0.6, -0.8, 0.22, bh, 0.05, '#2a2a38', 0, 'nwetb');
+  thing('window', 'Look outside', [wx0, wy0, -0.15, wx1, wy1, 0.1]);
+  // other walls
+  box(-T, 0, 0, T, ROOM.h, ROOM.d, wall2);
+  box(ROOM.w, 0, 0, T, ROOM.h, ROOM.d, wall2);
+  // south wall with front door (x 0.55..1.45) and bathroom door (x 2.6..3.4)
+  box(0, 0, ROOM.d, 0.55, ROOM.h, T, wall);
+  box(1.45, 0, ROOM.d, 1.15, ROOM.h, T, wall);
+  box(3.4, 0, ROOM.d, ROOM.w - 3.4, ROOM.h, T, wall);
+  box(0.55, 2.1, ROOM.d, 0.9, ROOM.h - 2.1, T, wall);
+  box(2.6, 2.1, ROOM.d, 0.8, ROOM.h - 2.1, T, wall);
+  // front door
+  box(0.57, 0, ROOM.d - 0.03, 0.86, 2.08, 0.06, '#6b4a33');
+  box(0.62, 0.9, ROOM.d - 0.05, 0.76, 0.02, 0.02, '#5a3d2a');
+  prism(1.32, 1.0, ROOM.d - 0.07, 0.03, 0.03, '#d4b25a', 6);
+  box(0.95, 1.55, ROOM.d - 0.05, 0.1, 0.03, 0.02, '#c9c9c9'); // peephole plate
+  box(0.75, 0.4, ROOM.d - 0.06, 0.5, 0.12, 0.03, '#a8a8a8');   // mail slot
+  thing('door', 'Front door', [0.55, 0, ROOM.d - 0.15, 1.45, 2.1, ROOM.d]);
+  // bathroom door
+  box(2.62, 0, ROOM.d - 0.03, 0.76, 2.08, 0.06, '#efe8da');
+  prism(3.3, 1.0, ROOM.d - 0.07, 0.03, 0.03, '#bbbbbb', 6);
+  thing('bath', 'Bathroom', [2.6, 0, ROOM.d - 0.15, 3.4, 2.1, ROOM.d]);
+  // baseboards
+  box(0, 0, 0, ROOM.w, 0.08, 0.02, trim); box(0, 0, 0, 0.02, 0.08, ROOM.d, trim); box(ROOM.w - 0.02, 0, 0, 0.02, 0.08, ROOM.d, trim);
+
+  // ---- bed (west wall) ----
+  box(0.02, 0, 0.15, 1.0, 0.3, 2.05, '#5b4636');          // frame
+  box(0.05, 0.3, 0.2, 0.94, 0.18, 1.98, '#ece8e0');       // mattress
+  box(0.04, 0.46, 0.75, 0.96, 0.08, 1.45, '#3d5a8a');     // blanket
+  box(0.04, 0.42, 0.7, 0.96, 0.06, 0.1, '#344d78');       // blanket fold
+  box(0.18, 0.48, 0.25, 0.66, 0.12, 0.38, '#f6f3ec');     // pillow
+  box(0.02, 0, 0.0, 1.0, 1.0, 0.15, '#4a382b');           // headboard
+  solid(0, 0, 1.05, 2.2);
+  thing('bed', 'Sleep', [0, 0, 0.15, 1.05, 0.7, 2.2]);
+  // nightstand + lamp
+  box(1.08, 0, 0.05, 0.42, 0.5, 0.4, '#6b5240');
+  box(1.1, 0.5, 0.07, 0.38, 0.02, 0.36, '#7a5e4a');
+  prism(1.29, 0.52, 0.25, 0.08, 0.02, '#333', 8);
+  prism(1.29, 0.54, 0.25, 0.015, 0.28, '#333', 6);
+  prism(1.29, 0.8, 0.25, 0.12, 0.16, '#f2d9a6', 8, 4); // lampshade glows
+  solid(1.05, 0, 1.52, 0.47);
+
+  // ---- desk + PC (north wall, right of window) ----
+  const dx = 2.7, dw = 1.5;
+  box(dx, 0.72, 0.02, dw, 0.04, 0.7, '#3b3a44');           // top
+  box(dx + 0.03, 0, 0.06, 0.05, 0.72, 0.05, '#222'); box(dx + dw - 0.08, 0, 0.06, 0.05, 0.72, 0.05, '#222');
+  box(dx + 0.03, 0, 0.62, 0.05, 0.72, 0.05, '#222'); box(dx + dw - 0.08, 0, 0.62, 0.05, 0.72, 0.05, '#222');
+  // monitor
+  box(dx + 0.68, 0.76, 0.18, 0.14, 0.02, 0.12, '#1d1d22');
+  box(dx + 0.72, 0.78, 0.22, 0.06, 0.18, 0.04, '#1d1d22');
+  box(dx + 0.33, 0.9, 0.16, 0.84, 0.5, 0.04, '#141418');
+  box(dx + 0.36, 0.93, 0.2, 0.78, 0.44, 0.005, '#ffffff', 2);      // screen
+  // tower
+  box(dx + dw - 0.3, 0.76, 0.12, 0.2, 0.42, 0.42, '#1f1f26');
+  box(dx + dw - 0.29, 1.0, 0.54, 0.02, 0.1, 0.005, '#7cf5ff', 2);
+  // keyboard + mouse + clutter
+  box(dx + 0.45, 0.76, 0.42, 0.6, 0.02, 0.18, '#2a2a30');
+  box(dx + 1.15, 0.76, 0.46, 0.06, 0.02, 0.1, '#2a2a30');
+  prism(dx + 0.15, 0.76, 0.45, 0.033, 0.12, '#3ad66b', 8);   // energy drinks
+  prism(dx + 0.24, 0.76, 0.52, 0.033, 0.12, '#3ad66b', 8);
+  prism(dx + 0.1, 0.76, 0.58, 0.033, 0.12, '#d63a3a', 8);
+  box(dx + 0.05, 0.76, 0.1, 0.28, 0.06, 0.22, '#c9a36b');    // pizza box
+  solid(dx, 0, dx + dw, 0.72);
+  thing('pc', 'Use computer', [dx + 0.3, 0.72, 0, dx + 1.2, 1.45, 0.72]);
+  // chair
+  const cx = dx + 0.75, cz = 1.15;
+  prism(cx, 0, cz, 0.28, 0.04, '#222', 5);
+  prism(cx, 0.04, cz, 0.03, 0.4, '#333', 6);
+  box(cx - 0.25, 0.44, cz - 0.25, 0.5, 0.08, 0.5, '#b03030');
+  box(cx - 0.24, 0.52, cz + 0.2, 0.48, 0.65, 0.07, '#b03030');
+  solid(cx - 0.28, cz - 0.28, cx + 0.28, cz + 0.3);
+
+  // ---- kitchenette (east wall) ----
+  const kx = 4.38;
+  box(kx, 0, 0.95, ROOM.w - kx, 0.86, 1.6, '#e7e2d6');             // cabinets
+  box(kx - 0.02, 0.86, 0.93, ROOM.w - kx + 0.02, 0.04, 1.64, '#4a4a52'); // counter top
+  for (let i = 0; i < 3; i++) box(kx - 0.01, 0.1, 1.0 + i * 0.52, 0.01, 0.7, 0.48, '#ddd6c6');
+  // stove top (z 0.98..1.52) with 4 burners; the front-left burner is the working one (see cooking.js)
+  box(kx + 0.04, 0.9, 0.98, 0.54, 0.014, 0.54, '#2b2b2b');
+  for (const [a, b] of [[0.42, 1.12], [0.42, 1.38], [0.2, 1.38]]) prism(kx + a, 0.914, b, 0.075, 0.004, '#555', 10);
+  // control panel + knob on the front face of the counter
+  box(kx - 0.035, 0.7, 1.0, 0.02, 0.12, 0.5, '#d9d3c4');
+  // cutting board (z 1.58..1.98)
+  box(kx + 0.06, 0.9, 1.6, 0.4, 0.025, 0.36, '#c89a62');
+  box(kx + 0.06, 0.905, 1.6, 0.4, 0.02, 0.01, '#b5884f');
+  box(kx + 0.3, 0.925, 1.66, 0.02, 0.008, 0.2, '#cfd3d8');          // knife blade
+  box(kx + 0.3, 0.925, 1.86, 0.025, 0.012, 0.09, '#2a2a2a');        // knife handle
+  // sink (z 2.06..2.5)
+  box(kx + 0.08, 0.9, 2.04, 0.44, 0.006, 0.48, '#b9c0c6');
+  box(kx + 0.12, 0.902, 2.08, 0.36, 0.006, 0.4, '#7d868e');
+  prism(kx + 0.55, 0.9, 2.28, 0.02, 0.25, '#bbb', 6);
+  box(kx + 0.05, 1.4, 0.95, ROOM.w - kx - 0.05, 0.6, 1.6, '#e7e2d6'); // upper cabinets
+  solid(kx - 0.03, 0.93, ROOM.w, 2.57);
+  thing('pan', 'Pan', [kx - 0.02, 0.88, 0.98, kx + 0.36, 1.05, 1.32]);
+  thing('knob', 'Stove knob', [kx - 0.07, 0.66, 1.0, kx + 0.0, 0.86, 1.5]);
+  thing('board', 'Cutting board', [kx - 0.02, 0.88, 1.56, ROOM.w, 1.0, 2.0]);
+  // fridge
+  box(kx - 0.02, 0, 2.7, ROOM.w - kx + 0.02, 1.8, 0.7, '#f1f1f1');
+  box(kx - 0.04, 1.2, 2.72, 0.02, 0.01, 0.66, '#cfcfcf');
+  box(kx - 0.05, 0.75, 2.75, 0.03, 0.35, 0.04, '#aaaaaa');
+  box(kx - 0.05, 1.3, 2.75, 0.03, 0.3, 0.04, '#aaaaaa');
+  solid(kx - 0.05, 2.7, ROOM.w, 3.4);
+  thing('fridge', 'Fridge', [kx - 0.06, 0, 2.7, ROOM.w, 1.8, 3.4]);
+  // trash bin
+  prism(4.75, 0, 3.65, 0.16, 0.45, '#3a3a40', 8);
+  prism(4.75, 0.45, 3.65, 0.17, 0.03, '#2c2c32', 8);
+  solid(4.58, 3.48, 4.92, 3.82);
+  thing('trash', 'Trash', [4.56, 0, 3.46, 4.94, 0.6, 3.84]);
+
+  // ---- living bits ----
+  box(1.6, 0.0, 1.5, 1.9, 0.01, 1.4, '#5a3a5e');                 // rug
+  box(1.68, 0.01, 1.58, 1.74, 0.005, 1.24, '#6b4870');
+  // beanbag (stacked boxes) + game console
+  box(1.7, 0, 2.55, 0.7, 0.3, 0.7, '#2f6b5a'); box(1.78, 0.3, 2.62, 0.54, 0.16, 0.55, '#327562'); box(1.74, 0.3, 3.05, 0.62, 0.35, 0.2, '#2f6b5a');
+  solid(1.7, 2.55, 2.4, 3.25);
+  // pizza boxes + laundry pile
+  box(3.7, 0, 2.9, 0.42, 0.05, 0.42, '#c9a36b'); box(3.72, 0.05, 2.92, 0.42, 0.05, 0.42, '#bf9860'); box(3.69, 0.1, 2.88, 0.42, 0.05, 0.42, '#c9a36b');
+  box(0.2, 0, 2.6, 0.5, 0.18, 0.4, '#6d7a8c'); box(0.3, 0.18, 2.66, 0.32, 0.12, 0.28, '#8c5a5a');
+  // poster above bed
+  box(0.0, 1.25, 0.6, 0.02, 0.8, 0.6, '#1d1730');
+  box(0.02, 1.32, 0.66, 0.01, 0.66, 0.48, '#b98cff');
+  box(0.03, 1.5, 0.76, 0.01, 0.3, 0.28, '#7cf5ff');
+  // ceiling light
+  prism(2.5, ROOM.h - 0.05, 2.0, 0.3, 0.05, '#ddd', 10);
+  prism(2.5, ROOM.h - 0.11, 2.0, 0.25, 0.06, '#fff6dc', 10, 3);
+  // light switch
+  box(1.55, 1.15, ROOM.d - 0.02, 0.08, 0.12, 0.02, '#f4f0e6');
+}
+
+// =====================================================================
+// WebGL renderer
+// =====================================================================
+const canvas = $('gl');
+const gl = canvas.getContext('webgl', { antialias: true }) || canvas.getContext('experimental-webgl');
+let prog, attr = {}, uni = {}, vertCount = 0, burnerGlow = [0.2, 0.2, 0.2];
+// module hooks (cooking.js etc. register into these)
+const hooks = { interact: [], update: [], draw: [], key: [], hud: [], fresh: [], speed: [] };
+const VS = `
+attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute float aGlow;
+uniform mat4 uVP;
+varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
+void main() { vPos = aPos; vNor = aNor; vCol = aCol; vGlow = aGlow; gl_Position = uVP * vec4(aPos, 1.0); }`;
+const FS = `
+precision mediump float;
+varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
+uniform vec3 uAmbSky; uniform vec3 uAmbGround;
+uniform vec3 uLP[4]; uniform vec3 uLC[4];
+uniform vec3 uGlow1; uniform vec3 uGlow2; uniform vec3 uGlow3; uniform vec3 uGlow4; uniform vec3 uGlow5;
+uniform vec3 uWinPos; uniform vec3 uWinCol;
+void main() {
+  if (vGlow > 0.5) {
+    vec3 g = vGlow < 1.5 ? uGlow1 : vGlow < 2.5 ? uGlow2 : vGlow < 3.5 ? uGlow3 : vGlow < 4.5 ? uGlow4 : uGlow5;
+    gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25), 1.0); return;
+  }
+  vec3 n = normalize(vNor);
+  vec3 amb = mix(uAmbGround, uAmbSky, n.y * 0.5 + 0.5);
+  // fake ambient occlusion: darker near floor and in corners
+  float ao = 0.72 + 0.28 * smoothstep(0.0, 0.9, vPos.y);
+  vec3 lit = amb * ao;
+  for (int i = 0; i < 4; i++) {
+    vec3 L = uLP[i] - vPos; float d = length(L); L /= d;
+    float wrap = max(dot(n, L) * 0.8 + 0.2, 0.0);
+    lit += uLC[i] * wrap / (1.0 + 0.9 * d * d);
+  }
+  // window light: a soft area light from the north wall
+  vec3 W = uWinPos - vPos; float wd = length(W); W /= wd;
+  lit += uWinCol * max(dot(n, W), 0.0) / (1.0 + 0.6 * wd * wd);
+  vec3 c = vCol * lit;
+  c = c / (1.0 + c * 0.35);                 // soft tone map
+  gl_FragColor = vec4(pow(c, vec3(0.92)), 1.0);
+}`;
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const ATTRS = [['aPos', 3], ['aNor', 3], ['aCol', 3], ['aGlow', 1]];
+const KEYS = { aPos: 'pos', aNor: 'nor', aCol: 'col', aGlow: 'glow' };
+let staticBufs, dynBufs;
+function makeBufs(geo, usage) {
+  const o = {};
+  for (const [name] of ATTRS) { o[name] = gl.createBuffer(); if (geo) { gl.bindBuffer(gl.ARRAY_BUFFER, o[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geo[KEYS[name]]), usage); } }
+  return o;
+}
+function bindBufs(bufs) {
+  for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, bufs[name]); gl.vertexAttribPointer(attr[name].loc, attr[name].size, gl.FLOAT, false, 0, 0); }
+}
+function initGL() {
+  prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  for (const [name, size] of ATTRS) { attr[name] = { loc: gl.getAttribLocation(prog, name), size }; gl.enableVertexAttribArray(attr[name].loc); }
+  staticBufs = makeBufs(STATIC_G, gl.STATIC_DRAW);
+  dynBufs = makeBufs(null, gl.DYNAMIC_DRAW);
+  vertCount = STATIC_G.pos.length / 3;
+  for (const n of ['uVP', 'uAmbSky', 'uAmbGround', 'uGlow1', 'uGlow2', 'uGlow3', 'uGlow4', 'uGlow5', 'uWinPos', 'uWinCol']) uni[n] = gl.getUniformLocation(prog, n);
+  uni.uLP = gl.getUniformLocation(prog, 'uLP'); uni.uLC = gl.getUniformLocation(prog, 'uLC');
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
+}
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(innerWidth * dpr); canvas.height = Math.round(innerHeight * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+
+// =====================================================================
+// Lighting by time of day
+// =====================================================================
+// sky colours keyed by hour
+const SKY = [[0, '#0b1026'], [5, '#141a3a'], [6.5, '#e8956a'], [8, '#9fc7ef'], [12, '#8ec1f2'], [17, '#a9c6e8'], [18.7, '#f08a5d'], [20, '#2a2350'], [21.5, '#0f1430'], [24, '#0b1026']];
+function skyAt(h) {
+  for (let i = 0; i < SKY.length - 1; i++) {
+    const [h0, c0] = SKY[i], [h1, c1] = SKY[i + 1];
+    if (h >= h0 && h <= h1) return lerp3(hex(c0), hex(c1), (h - h0) / (h1 - h0));
+  }
+  return hex(SKY[0][1]);
+}
+function daylight(h) { // 0 at night, 1 at noon
+  if (h < 5.5 || h > 20) return 0;
+  if (h < 8) return (h - 5.5) / 2.5;
+  if (h > 17.5) return 1 - (h - 17.5) / 2.5;
+  return 1;
+}
+
+function render() {
+  const h = (S.t / 60) % 24, day = daylight(h), sky = skyAt(h);
+  gl.clearColor(0.02, 0.02, 0.04, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const aspect = canvas.width / canvas.height;
+  const bob = Math.sin(P.bob) * 0.025;
+  const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), M4.view(P.x, P.y + bob, P.z, P.yaw, P.pitch));
+  gl.uniformMatrix4fv(uni.uVP, false, vp);
+  const ambK = 0.16 + 0.32 * day;
+  gl.uniform3fv(uni.uAmbSky, lerp3([0.18, 0.18, 0.28], [0.62, 0.62, 0.66], day).map(v => v * (0.6 + ambK)));
+  gl.uniform3fv(uni.uAmbGround, lerp3([0.1, 0.08, 0.1], [0.36, 0.3, 0.26], day));
+  // lights: ceiling (on at night), bedside lamp, monitor glow, fridge
+  const ceilOn = S.lightOn ? 1 : 0;
+  const mon = pcOpen ? [0.45, 0.6, 1.0] : [0.25, 0.35, 0.7];
+  gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, 1.29, 0.95, 0.25, 3.45, 1.15, 0.45, 4.2, 1.0, 3.05]);
+  gl.uniform3fv(uni.uLC, [
+    1.25 * ceilOn, 1.12 * ceilOn, 0.92 * ceilOn,
+    0.55, 0.42, 0.25,
+    mon[0] * 0.5, mon[1] * 0.5, mon[2] * 0.5,
+    0, 0, 0,
+  ]);
+  gl.uniform3fv(uni.uWinPos, [1.8, 1.5, -0.4]);
+  gl.uniform3fv(uni.uWinCol, sky.map(v => v * (0.25 + 1.4 * day)));
+  gl.uniform3fv(uni.uGlow1, sky.map(v => Math.min(1, v * 1.15)));
+  gl.uniform3fv(uni.uGlow2, internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]);
+  gl.uniform3fv(uni.uGlow3, ceilOn ? [1.0, 0.96, 0.85] : [0.55, 0.53, 0.5]);
+  gl.uniform3fv(uni.uGlow4, [1.0, 0.82, 0.55]);
+  gl.uniform3fv(uni.uGlow5, burnerGlow);
+  bindBufs(staticBufs);
+  gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+  // dynamic objects (food, held items, smoke...) are rebuilt every frame by modules
+  const D = { pos: [], nor: [], col: [], glow: [] };
+  intoGeometry(D, () => { for (const fn of hooks.draw) fn(); });
+  if (D.pos.length) {
+    for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, dynBufs[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(D[KEYS[name]]), gl.DYNAMIC_DRAW); }
+    bindBufs(dynBufs);
+    gl.drawArrays(gl.TRIANGLES, 0, D.pos.length / 3);
+  }
+}
+
+// =====================================================================
+// Player, input, collision, picking
+// =====================================================================
+const P = { x: 3.1, y: 1.6, z: 2.2, yaw: 0.25, pitch: -0.08, bob: 0, r: 0.24 };
+const keys = {};
+let locked = false, pcOpen = false, paused = true, started = false, sleeping = false;
+// "active" = the player is in the room and can move/look, with or without pointer lock.
+// If the browser refuses pointer lock (embedded previews, some settings), we fall back to drag-to-look.
+let lockFailed = false, dragging = false;
+let modalOpen = false;
+const active = () => started && !paused && !pcOpen && !modalOpen && !sleeping && S && !S.evicted;
+
+function collide(nx, nz) {
+  const r = P.r;
+  nx = Math.max(r, Math.min(ROOM.w - r, nx)); nz = Math.max(r, Math.min(ROOM.d - r, nz));
+  const inside = (x, z, [x0, z0, x1, z1]) => x > x0 - r && x < x1 + r && z > z0 - r && z < z1 + r;
+  for (const s of solids) {
+    // only block if the step enters furniture; if we're already overlapping (bad spawn/old save), let us walk out
+    if (inside(nx, nz, s) && !inside(P.x, P.z, s)) return null;
+  }
+  return [nx, nz];
+}
+function movePlayer(dt) {
+  let f = 0, s = 0;
+  if (keys.KeyW || keys.ArrowUp) f += 1; if (keys.KeyS || keys.ArrowDown) f -= 1;
+  if (keys.KeyD || keys.ArrowRight) s += 1; if (keys.KeyA || keys.ArrowLeft) s -= 1;
+  if (!f && !s) return;
+  let speedK = 1; for (const fn of hooks.speed) speedK *= fn();
+  const len = Math.hypot(f, s), sp = 2.1 * speedK * dt / len;
+  const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw), rx = Math.cos(P.yaw), rz = -Math.sin(P.yaw);
+  const dx = (fx * f + rx * s) * sp, dz = (fz * f + rz * s) * sp;
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.01)); // sub-steps so we stop flush against furniture
+  for (let i = 0; i < n; i++) {
+    let c = collide(P.x + dx / n, P.z); if (c) P.x = c[0];
+    c = collide(P.x, P.z + dz / n); if (c) P.z = c[1];
+  }
+  P.bob += dt * 9;
+}
+function pick() {
+  const cp = Math.cos(P.pitch);
+  const d = [-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp];
+  const o = [P.x, P.y, P.z];
+  let best = null, bt = 2.3;
+  for (const th of things) {
+    let t0 = 0, t1 = bt, ok = true;
+    for (let a = 0; a < 3; a++) {
+      const lo = th.box[a], hi = th.box[a + 3];
+      if (Math.abs(d[a]) < 1e-6) { if (o[a] < lo || o[a] > hi) { ok = false; break; } continue; }
+      let ta = (lo - o[a]) / d[a], tb = (hi - o[a]) / d[a];
+      if (ta > tb) [ta, tb] = [tb, ta];
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+      if (t0 > t1) { ok = false; break; }
+    }
+    if (ok && t0 < bt) { bt = t0; best = th; }
+  }
+  return best;
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyE' && active() && hovered) interact(hovered.id);
+  if (active()) for (const fn of hooks.key) fn(e.code);
+  if (e.code === 'Escape' && !locked && active()) { paused = true; showScreen('scPause'); }
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && active()) e.preventDefault();
+  if (e.code === 'Escape' && pcOpen) { e.preventDefault(); closePC(); }
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+canvas.addEventListener('mousedown', e => { if (!locked && active()) { dragging = true; dragMoved = 0; } });
+window.addEventListener('mouseup', () => { dragging = false; });
+let dragMoved = 0;
+document.addEventListener('mousemove', e => {
+  if (!locked && !(dragging && active())) return;
+  if (!locked) dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+  const k = locked ? 0.0022 : 0.005;
+  P.yaw -= e.movementX * k; P.pitch -= e.movementY * k;
+  P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch));
+});
+canvas.addEventListener('click', () => {
+  if (!started || pcOpen || modalOpen || sleeping) return;
+  if (!locked && !lockFailed) { lockPointer(); return; }
+  if (!locked && dragMoved > 6) return; // that was a look-drag, not a click
+  if (hovered && active()) interact(hovered.id);
+});
+function lockPointer() {
+  paused = false; showScreen(null);
+  if (lockFailed || !canvas.requestPointerLock) { useFallback(); return; }
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(useFallback); } catch (e) { useFallback(); }
+}
+function useFallback() {
+  if (!lockFailed) toast('Mouse capture isn\'t available here, so hold the mouse button and drag to look around. WASD still moves.', '', 7000);
+  lockFailed = true; paused = false; showScreen(null);
+  $('crosshair').style.display = '';
+}
+document.addEventListener('pointerlockerror', useFallback);
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (locked) { paused = false; showScreen(null); }
+  else if (started && !pcOpen && !modalOpen && !sleeping && !S.evicted && !lockFailed) { paused = true; showScreen('scPause'); }
+  $('crosshair').style.display = locked || lockFailed ? '' : 'none';
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && started && !pcOpen) { paused = true; } });
+
+// =====================================================================
+// GAME STATE — exposed later in this file
+// =====================================================================
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const GAME_MIN_PER_SEC = 2;          // 1 real second = 2 in-game minutes (a day is ~12 real minutes)
+const START_MONEY = 300;
+const BILL_DEFS = {
+  rent:     { name: 'Rent',     amount: 250, every: 7, firstDue: 7, late: 25, grace: 2 },
+  internet: { name: 'Internet', amount: 40,  every: 7, firstDue: 4, late: 10, grace: 0 },
+};
+const BETS = [10, 25, 50, 100, 250, 500];
+// cash-out multiplier after clearing N floors (index = floors cleared). Beyond the table: ×1.25 per floor.
+const CASH_TABLE = [0, 1.1, 1.3, 1.6, 2, 2.8, 3.3, 4, 5, 6.2, 8];
+const SAVE_KEY = 'neetlife_save_v1';
+
+let S = null; // game state
+function freshState() {
+  return {
+    t: 8 * 60,             // minutes since Day 1 00:00
+    money: START_MONEY,
+    lightOn: true,
+    bills: Object.entries(BILL_DEFS).map(([id, d]) => ({ id, due: d.firstDue, paid: false, late: false })),
+    tx: [{ t: 8 * 60, desc: 'Opening balance', amt: START_MONEY }],
+    stats: { runs: 0, wins: 0, busts: 0, best: 0, wagered: 0, won: 0 },
+    pos: null, evicted: false, lastDay: 1,
+  };
+}
+function save() { if (!S || !started) return; try { S.pos = { x: P.x, z: P.z, yaw: P.yaw, pitch: P.pitch }; localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+function load() { try { const v = localStorage.getItem(SAVE_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+
+const dayOf = t => Math.floor(t / 1440) + 1;
+function clockStr(t) {
+  const d = dayOf(t), m = Math.floor(t % 1440), hh = Math.floor(m / 60), mm = m % 60;
+  const h12 = (hh % 12) || 12, ap = hh < 12 ? 'AM' : 'PM';
+  return `${DAYS[(d - 1) % 7]} · Day ${d} · ${h12}:${String(mm).padStart(2, '0')} ${ap}`;
+}
+const money = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString();
+const dueLabel = due => { const d = due - dayOf(S.t); return d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue` : d === 0 ? 'due today' : d === 1 ? 'due tomorrow' : `due ${DAYS[(due - 1) % 7]} (Day ${due})`; };
+function bill(id) { return S.bills.find(b => b.id === id); }
+function internetOn() { if (!S) return true; const b = bill('internet'); return !(b && !b.paid && b.late); }
+function billCost(b) { return BILL_DEFS[b.id].amount + (b.late ? BILL_DEFS[b.id].late : 0); }
+
+function addMoney(amt, desc) {
+  S.money += amt;
+  S.tx.unshift({ t: S.t, desc, amt });
+  if (S.tx.length > 60) S.tx.length = 60;
+  updateHUD(); save();
+}
+
+// ---- time ----
+function advance(mins) {
+  const before = dayOf(S.t);
+  S.t += mins;
+  const after = dayOf(S.t);
+  for (let d = before + 1; d <= after && !S.evicted; d++) newDay(d);
+}
+function newDay(d) {
+  S.lastDay = d;
+  for (const b of S.bills) {
+    const def = BILL_DEFS[b.id];
+    if (b.paid) continue;
+    if (d > b.due && !b.late) {
+      b.late = true;
+      toast(`${def.name} is overdue. +${money(def.late)} late fee.` + (b.id === 'internet' ? ' Your internet has been cut off.' : ` Pay within ${def.grace} days or you're out.`), 'bad', 7000);
+    }
+    if (b.id === 'rent' && d > b.due + def.grace) { evict(); return; }
+  }
+  for (const b of S.bills) {
+    if (!b.paid && b.due === d) toast(`${BILL_DEFS[b.id].name} (${money(billCost(b))}) is due today.`, 'bad', 6000);
+    else if (!b.paid && b.due === d + 1) toast(`${BILL_DEFS[b.id].name} (${money(billCost(b))}) is due tomorrow.`, '', 6000);
+  }
+  save();
+}
+function payBill(id) {
+  const b = bill(id), cost = billCost(b);
+  if (b.paid || S.money < cost) return;
+  addMoney(-cost, `${BILL_DEFS[id].name} payment`);
+  const def = BILL_DEFS[id];
+  const wasLate = b.late;
+  b.paid = true;
+  // queue next cycle immediately so there's always one bill per type
+  Object.assign(b, { due: b.due + def.every, paid: false, late: false });
+  toast(`${def.name} paid.` + (id === 'internet' && wasLate ? ' Internet restored.' : ''), 'good');
+  renderBills(); updateHUD(); save();
+}
+function evict() {
+  if (S.evicted) return;
+  S.evicted = true; save(); updateHUD();
+  paused = true; closePC(true);
+  document.exitPointerLock && document.exitPointerLock();
+  const st = S.stats;
+  $('evStats').innerHTML = `
+    <div class="stat"><b>${dayOf(S.t)}</b><span>Days survived</span></div>
+    <div class="stat"><b>${money(S.money)}</b><span>Money left</span></div>
+    <div class="stat"><b>${st.runs}</b><span>Plinko runs</span></div>
+    <div class="stat"><b>${money(st.best)}</b><span>Biggest win</span></div>`;
+  showScreen('scEvicted');
+}
+
+// ---- HUD / UI helpers ----
+function updateHUD() {
+  if (!S) return;
+  for (const fn of hooks.hud) fn();
+  $('hudClock').textContent = clockStr(S.t);
+  $('hudMoney').textContent = money(S.money);
+  $('tbClock').textContent = clockStr(S.t);
+  $('tbMoney').textContent = money(S.money);
+  const warn = S.bills.filter(b => !b.paid && b.due - dayOf(S.t) <= 1).map(b => `${BILL_DEFS[b.id].name} ${dueLabel(b.due)}`);
+  $('hudWarn').style.display = warn.length ? '' : 'none';
+  $('hudWarn').textContent = warn.join(' · ');
+}
+function toast(msg, kind = '', ms = 4000) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind; el.textContent = msg;
+  $('toasts').prepend(el);
+  setTimeout(() => { el.style.opacity = 0; setTimeout(() => el.remove(), 450); }, ms);
+}
+function showScreen(id) { for (const s of document.querySelectorAll('.screen')) s.classList.toggle('show', s.id === id); }
+
+// ---- interactions ----
+let hovered = null;
+const QUIPS = {
+  door: ['You peek through the peephole. The hallway is empty. Outside can wait.', 'You put your hand on the doorknob, then think better of it.', 'There might be people out there. Hard pass.'],
+  bath: ['The bathroom. You were just in there. Probably.', 'The shower drips. You make a mental note to call the landlord. You won\'t.'],
+  fridge: ['One energy drink, half a lemon and a mystery container. Living the dream.', 'The fridge hums at you judgementally.'],
+};
+function interact(id) {
+  if (paused || sleeping) return;
+  for (const fn of hooks.interact) if (fn(id)) return;
+  if (id === 'pc') return openPC();
+  if (id === 'bed') return sleep();
+  if (id === 'window') {
+    const h = (S.t / 60) % 24;
+    return toast(h < 6 || h >= 20 ? 'City lights twinkle. Everyone out there has a job.' : h < 9 ? 'Morning commuters shuffle to work. Couldn\'t be you.' : h < 17 ? 'Broad daylight. Way too bright.' : 'The sun is setting. Prime gambling hours approach.');
+  }
+  if (id === 'door') {
+    const r = bill('rent');
+    if (!r.paid && r.late) return toast('A notice is taped to the door: "PAY YOUR RENT OR GET OUT." — Management', 'bad', 6000);
+  }
+  const q = QUIPS[id]; if (q) toast(q[Math.floor(Math.random() * q.length)]);
+}
+function sleep() {
+  const h = (S.t / 60) % 24;
+  sleeping = true;
+  document.exitPointerLock && document.exitPointerLock();
+  const fade = $('fade');
+  const target = (h < 8 ? 0 : 1) * 1440 + 8 * 60; // next 8 AM
+  fade.textContent = 'Zzz…'; fade.classList.add('on');
+  setTimeout(() => {
+    const now = S.t % 1440, mins = target - now;
+    advance(mins);
+    updateHUD(); save();
+    fade.textContent = clockStr(S.t).split(' · ').slice(0, 2).join(' · ');
+    setTimeout(() => {
+      fade.classList.remove('on'); sleeping = false;
+      if (!S.evicted) { toast(h >= 6 && h < 18 ? 'You napped until morning. No regrets.' : 'You slept until 8 AM.'); lockPointer(); }
+    }, 1100);
+  }, 900);
+}
+
+// =====================================================================
+// PC
+// =====================================================================
+let tableBet = 0, atTable = false, frameReady = false, pendingStart = null;
+function openPC() {
+  pcOpen = true;
+  document.exitPointerLock && document.exitPointerLock();
+  $('pc').classList.add('show');
+  hideWins(); updateHUD();
+}
+function closePC(force) {
+  if (atTable && !force) { confirmLeaveTable(); return; }
+  if (atTable) endTable();
+  pcOpen = false; $('pc').classList.remove('show');
+  if (!force && started && !S.evicted) lockPointer();
+}
+function hideWins() { for (const w of document.querySelectorAll('.win')) w.classList.remove('show'); }
+function openWin(id) { hideWins(); $(id).classList.add('show'); }
+for (const ic of document.querySelectorAll('.icon[data-app], .taskbar [data-app]')) ic.onclick = () => {
+  if (atTable) { confirmLeaveTable(); return; }
+  const a = ic.dataset.app;
+  if (a === 'casino') { renderCasino(); openWin('winCasino'); }
+  if (a === 'bank') { renderBank(); openWin('winBank'); }
+  if (a === 'bills') { renderBills(); openWin('winBills'); }
+};
+for (const b of document.querySelectorAll('[data-close]')) b.onclick = hideWins;
+$('iconLogoff').onclick = () => closePC();
+$('btnLogoff').onclick = () => closePC();
+
+function renderBank() {
+  const st = S.stats;
+  $('bankBody').innerHTML = `<h3>Balance: <span class="${S.money >= 0 ? 'pos' : 'neg'}">${money(S.money)}</span></h3>
+    <p>Plinko: ${st.runs} runs · ${st.wins} cash-outs · ${st.busts} busts · wagered ${money(st.wagered)} · paid out ${money(st.won)}</p>
+    <table><tr><th>When</th><th>Description</th><th class="num">Amount</th></tr>
+    ${S.tx.map(x => `<tr><td>${clockStr(x.t).split(' · ').slice(1).join(' · ')}</td><td>${x.desc}</td><td class="num ${x.amt >= 0 ? 'pos' : 'neg'}">${x.amt >= 0 ? '+' : ''}${money(x.amt)}</td></tr>`).join('')}</table>`;
+}
+function renderBills() {
+  $('billsBody').innerHTML = `<h3>Bills</h3><p>Rent and internet come every week. Late internet gets cut off; rent more than ${BILL_DEFS.rent.grace} days late gets you evicted.</p>
+    <table><tr><th>Bill</th><th>Status</th><th class="num">Amount</th><th></th></tr>
+    ${S.bills.map(b => {
+      const def = BILL_DEFS[b.id], cost = billCost(b), d = b.due - dayOf(S.t);
+      const pill = b.late ? `<span class="pill late">${dueLabel(b.due)}</span>` : d <= 1 ? `<span class="pill due">${dueLabel(b.due)}</span>` : `<span class="pill ok">${dueLabel(b.due)}</span>`;
+      return `<tr><td><b>${def.name}</b></td><td>${pill}</td><td class="num">${money(cost)}${b.late ? ` <small>(incl. ${money(def.late)} late fee)</small>` : ''}</td>
+        <td class="num"><button class="wbtn" data-pay="${b.id}" ${S.money < cost ? 'disabled' : ''}>Pay</button></td></tr>`;
+    }).join('')}</table>`;
+  for (const b of document.querySelectorAll('[data-pay]')) b.onclick = () => payBill(b.dataset.pay);
+}
+const cashMult = n => n <= 0 ? 0 : n < CASH_TABLE.length ? CASH_TABLE[n] : CASH_TABLE[CASH_TABLE.length - 1] * Math.pow(1.25, n - CASH_TABLE.length + 1);
+let chosenBet = 25;
+function renderCasino() {
+  const body = $('casinoBody');
+  if (!internetOn()) {
+    body.innerHTML = `<div class="offline"><div class="big">📡✕</div><h3>No internet connection</h3><p>Your internet was cut off for an unpaid bill. Pay it in the Bills app to get back online.</p><button class="wbtn" id="goBills">Open Bills</button></div>`;
+    $('goBills').onclick = () => { renderBills(); openWin('winBills'); };
+    return;
+  }
+  if (chosenBet > S.money) chosenBet = BETS.filter(b => b <= S.money).pop() || BETS[0];
+  body.innerHTML = `<div class="casino"><h3>Plinko Casino</h3>
+    <p>Place a bet and play a run. After each floor you clear you can <b>cash out</b> at the multiplier below, or pick an upgrade and push on. Bust before cashing out and the house keeps your bet.</p>
+    <div class="bets">${BETS.map(b => `<button data-bet="${b}" class="${b === chosenBet ? 'on' : ''}" ${b > S.money ? 'disabled' : ''}>$${b}</button>`).join('')}</div>
+    <div class="ladder">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<div class="rung">Floor ${n}${n % 5 === 0 ? ' ☠' : ''}<b>×${cashMult(n)}</b>${money(chosenBet * cashMult(n))}</div>`).join('')}</div>
+    <p style="font-size:12px">☠ boss floor. Past floor 10 each floor adds another ×1.25.</p>
+    <button class="wbtn gold" id="btnPlaceBet" ${S.money < chosenBet ? 'disabled' : ''} style="font-size:16px;padding:12px 20px">Bet ${money(chosenBet)} and play</button>
+    ${S.money < BETS[0] ? '<p class="neg">You can\'t afford the minimum bet.</p>' : ''}</div>`;
+  for (const b of body.querySelectorAll('[data-bet]')) b.onclick = () => { chosenBet = +b.dataset.bet; renderCasino(); };
+  $('btnPlaceBet').onclick = () => startTable(chosenBet);
+}
+function startTable(bet) {
+  if (S.money < bet || !internetOn()) return;
+  addMoney(-bet, `Plinko bet`);
+  S.stats.runs++; S.stats.wagered += bet; save();
+  tableBet = bet; atTable = true;
+  $('tableBet').textContent = `Bet ${money(bet)}`;
+  $('result').classList.remove('show');
+  openWin('winTable');
+  pendingStart = { type: 'neetStart', bet, table: CASH_TABLE };
+  const fr = $('plinkoFrame');
+  if (frameReady) sendStart(); else if (!fr.src) fr.src = '../Plinko/index.html?neet=1';
+}
+function sendStart() {
+  if (!pendingStart) return;
+  $('plinkoFrame').contentWindow.postMessage(Object.assign({ src: 'neetlife' }, pendingStart), '*');
+  pendingStart = null;
+  setTimeout(() => { try { $('plinkoFrame').contentWindow.focus(); } catch (e) {} }, 50);
+}
+function endTable() { atTable = false; tableBet = 0; }
+window.addEventListener('message', e => {
+  const fr = $('plinkoFrame');
+  if (!fr || e.source !== fr.contentWindow) return;
+  const d = e.data || {};
+  if (d.src !== 'plinko') return;
+  if (d.type === 'neetReady') { frameReady = true; sendStart(); }
+  if (d.type === 'neetCashOut' && atTable) {
+    const win = Math.round(tableBet * cashMult(d.cleared));
+    addMoney(win, `Plinko cash-out (floor ${d.cleared})`);
+    S.stats.wins++; S.stats.won += win; S.stats.best = Math.max(S.stats.best, win - tableBet);
+    advance(15 * d.cleared); updateHUD(); save();
+    showResult(true, win, d.cleared);
+  }
+  if (d.type === 'neetBust' && atTable) {
+    S.stats.busts++;
+    advance(15 * Math.max(1, d.floor - 1)); updateHUD(); save();
+    setTimeout(() => showResult(false, 0, d.floor - 1), 1400);
+  }
+});
+function showResult(won, amt, cleared) {
+  const bet = tableBet; endTable();
+  $('resultBox').innerHTML = won
+    ? `<p>Cashed out after floor ${cleared}</p><div class="big pos">+${money(amt)}</div><p>Profit ${money(amt - bet)} on a ${money(bet)} bet.</p>`
+    : `<p>Busted on floor ${cleared + 1}</p><div class="big neg">-${money(bet)}</div><p>The house thanks you for your business.</p>`;
+  $('resultBox').innerHTML += `<button class="wbtn gold" id="btnAgain">Back to casino</button>`;
+  $('result').classList.add('show');
+  $('btnAgain').onclick = () => { $('result').classList.remove('show'); renderCasino(); openWin('winCasino'); };
+}
+function confirmLeaveTable() {
+  $('resultBox').innerHTML = `<h3>Leave the table?</h3><p>Walking away mid-run forfeits your ${money(tableBet)} bet.</p>
+    <button class="wbtn" id="btnStay">Keep playing</button> <button class="wbtn" id="btnLeave" style="background:#c43a3a">Leave</button>`;
+  $('result').classList.add('show');
+  $('btnStay').onclick = () => $('result').classList.remove('show');
+  $('btnLeave').onclick = () => {
+    S.stats.busts++; endTable(); save();
+    $('result').classList.remove('show');
+    $('plinkoFrame').src = '../Plinko/index.html?neet=1'; frameReady = false; // reset the table
+    renderCasino(); openWin('winCasino');
+  };
+}
+$('btnForfeit').onclick = () => { if (atTable) confirmLeaveTable(); else { renderCasino(); openWin('winCasino'); } };
+
+// =====================================================================
+// Title / pause / boot
+// =====================================================================
+function renderTitle() {
+  const saved = load();
+  const box = $('titleBtns'); box.innerHTML = '';
+  const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; box.appendChild(b); };
+  if (saved && !saved.evicted) mk(`Continue · Day ${dayOf(saved.t)} · ${money(saved.money)}`, '', () => begin(saved));
+  mk(saved && !saved.evicted ? 'New life' : 'Start', saved && !saved.evicted ? 'ghost' : '', () => begin(null));
+}
+function begin(saved) {
+  S = saved || freshState();
+  for (const fn of hooks.fresh) fn(S);
+  if (S.pos) Object.assign(P, { x: S.pos.x, z: S.pos.z, yaw: S.pos.yaw, pitch: S.pos.pitch });
+  else Object.assign(P, { x: 3.1, z: 2.2, yaw: 0.25, pitch: -0.08 });
+  started = true; paused = false;
+  showScreen(null); updateHUD(); save();
+  lockPointer();
+  if (!saved) setTimeout(() => toast('Your PC is on the desk. Rent is due Sunday.', '', 6000), 600);
+}
+$('btnResume').onclick = () => lockPointer();
+$('btnQuitTitle').onclick = () => { save(); started = false; paused = true; renderTitle(); showScreen('scTitle'); };
+$('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} begin(null); };
+
+let last = performance.now(), saveTimer = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (started && !paused && !sleeping && S && !S.evicted) {
+    if (!pcOpen && !modalOpen) movePlayer(dt);
+    advance(dt * GAME_MIN_PER_SEC);
+    for (const fn of hooks.update) fn(dt);
+    saveTimer += dt; if (saveTimer > 5) { saveTimer = 0; save(); }
+    updateHUD();
+  }
+  hovered = active() ? pick() : null;
+  $('crosshair').classList.toggle('hot', !!hovered);
+  const pr = $('prompt');
+  if (hovered) { pr.style.display = 'block'; pr.innerHTML = `<kbd>E</kbd>${typeof hovered.prompt === 'function' ? hovered.prompt() : hovered.prompt}`; } else pr.style.display = 'none';
+  if (S || !started) render();
+  requestAnimationFrame(frame);
+}
+
+// boot
+buildRoom();
+if (!gl) { document.body.innerHTML = '<p style="padding:30px">Your browser doesn\'t support WebGL, which NEETLIFE needs.</p>'; return; }
+initGL(); resize();
+if (matchMedia('(pointer: coarse)').matches) $('mobileNote').style.display = '';
+S = freshState(); // background state for the title screen render
+for (const fn of hooks.fresh) fn(S);
+renderTitle();
+window.addEventListener('beforeunload', save);
+requestAnimationFrame(frame);
+
+// ---- module API (see cooking.js) ----
+window.NEET = {
+  hooks, box, prism, thing, things, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC,
+  get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
+  get active() { return active(); },
+  setBurnerGlow(c) { burnerGlow = c; },
+  openModal() { modalOpen = true; document.exitPointerLock && document.exitPointerLock(); },
+  closeModal() { modalOpen = false; if (started && !S.evicted) lockPointer(); },
+  pcAddApp(id, icon, label, gradient, onOpen) {
+    const ic = document.createElement('div');
+    ic.className = 'icon'; ic.innerHTML = `<div class="ico" style="background:${gradient}">${icon}</div>${label}`;
+    $('desk').insertBefore(ic, $('iconLogoff'));
+    const tb = document.createElement('button'); tb.textContent = `${icon} ${label.split(' ')[0]}`;
+    document.querySelector('.taskbar').insertBefore(tb, $('tbClock'));
+    const win = document.createElement('div'); win.className = 'win'; win.id = 'win_' + id;
+    win.innerHTML = `<div class="bar">${icon} ${label} <button class="x">✕</button></div><div class="body"></div>`;
+    document.querySelector('.screen-area').insertBefore(win, document.querySelector('.taskbar'));
+    win.querySelector('.x').onclick = hideWins;
+    const open = () => { if (atTable) { confirmLeaveTable(); return; } onOpen(win.querySelector('.body')); openWin(win.id); };
+    ic.onclick = open; tb.onclick = open;
+    return { body: win.querySelector('.body'), refresh: () => { if (win.classList.contains('show')) onOpen(win.querySelector('.body')); } };
+  },
+};
+
+// test hooks
+window.__neet = {
+  get S() { return S; }, P, things, interact, advance, openPC, closePC, startTable, renderCasino,
+  look(x, z, yaw, pitch) { Object.assign(P, { x, z, yaw, pitch }); },
+  forceLock(v) { locked = v; paused = !v; showScreen(null); },
+  get hovered() { return hovered; },
+};
+})();
