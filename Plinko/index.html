@@ -34,7 +34,7 @@
   }
   #hud {
     width: 100%; max-width: 600px;
-    display: grid; grid-template-columns: 1fr auto auto; gap: 8px;
+    display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px;
     align-items: center; margin-bottom: 6px;
   }
   .floor { font-weight: 800; font-size: 18px; letter-spacing: .5px; }
@@ -84,14 +84,14 @@
   .box p { color: var(--muted); margin: 6px 0; line-height: 1.45; font-size: 14px; }
   .legend { text-align: left; display: grid; gap: 6px; margin: 14px auto; max-width: 380px; font-size: 14px; }
   .legend span.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: -1px; }
-  button.btn {
+  .btn {
     font: inherit; font-weight: 800; font-size: 16px; color: #0d0b1a; cursor: pointer;
     background: var(--accent); border: 0; border-radius: 10px; padding: 12px 22px; margin: 8px 4px 0;
     box-shadow: 0 4px 0 #3aa7b3; transition: transform .08s;
   }
-  button.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #3aa7b3; }
-  button.btn.secondary { background: var(--panel2); color: var(--text); box-shadow: 0 4px 0 #120f26; font-size: 14px; padding: 10px 14px; }
-  button.btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #3aa7b3; }
+  .btn.secondary { background: var(--panel2); color: var(--text); box-shadow: 0 4px 0 #120f26; font-size: 14px; padding: 10px 14px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 6px; }
   .card {
     background: var(--panel); border: 2px solid #3a3270; border-radius: 12px; padding: 12px 8px;
@@ -117,6 +117,31 @@
     text-align: center;
   }
   .toast.show { opacity: 1; }
+  #menuBtn { cursor: pointer; }
+  .menu-col { display: flex; flex-direction: column; align-items: stretch; gap: 10px; max-width: 280px; margin: 18px auto 0; }
+  .menu-col .btn { margin: 0; }
+  .who { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid #2f2858;
+    border-radius: 999px; padding: 6px 8px 6px 14px; font-weight: 700; font-size: 14px; margin-top: 6px; }
+  .who b { color: var(--accent); }
+  .who button { font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); background: var(--panel2);
+    border: 1px solid #3a3270; border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+  .who button:hover { color: var(--text); }
+  input.name {
+    font: inherit; font-size: 18px; font-weight: 700; text-align: center; width: 100%; max-width: 280px;
+    color: var(--text); background: var(--panel); border: 2px solid #3a3270; border-radius: 10px; padding: 10px 12px; margin-top: 10px;
+    user-select: text; -webkit-user-select: text;
+  }
+  input.name:focus { outline: none; border-color: var(--accent); }
+  .err { color: var(--red); font-size: 13px; min-height: 18px; margin-top: 6px; }
+  .board { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; text-align: left; }
+  .board th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid #2f2858; }
+  .board td { padding: 7px 8px; border-bottom: 1px solid #221d40; }
+  .board td.num, .board th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .board tr.me td { background: #7cf5ff14; color: var(--accent); font-weight: 800; }
+  .board tr:nth-child(2) td:first-child { color: var(--gold); font-weight: 800; }
+  .board-note { font-size: 12px; color: var(--muted); }
+  .submit-line { font-size: 14px; font-weight: 700; color: var(--accent); min-height: 20px; }
+  a.link { color: var(--accent); font-weight: 700; }
   @media (max-width: 480px) {
     .cards { grid-template-columns: 1fr; }
     .card { flex-direction: row; align-items: center; text-align: left; gap: 10px; }
@@ -131,15 +156,40 @@
     <div class="floor" id="floorLabel">Floor 1</div>
     <div class="pill coins" id="coinLabel">● 0</div>
     <div class="pill" id="mute" title="Toggle sound">♪ On</div>
+    <div class="pill" id="menuBtn" title="Menu">☰</div>
   </div>
   <div id="progress"><div class="fill" id="progFill"></div><div class="label" id="progLabel">0 / 0</div></div>
   <div id="ballsRow"></div>
   <div id="stage">
     <canvas id="c" width="600" height="800"></canvas>
 
-    <div class="overlay show" id="ovStart"><div class="box">
+    <div class="overlay show" id="ovMenu"><div class="box">
       <h1>PLINKO</h1>
       <p style="font-weight:800;color:var(--text);letter-spacing:3px;margin-top:0">ROGUELITE</p>
+      <div class="who">Playing as <b id="whoName">—</b><button id="btnChangeName">Change</button></div>
+      <div class="menu-col">
+        <button class="btn" id="btnResume" style="display:none">Resume Run</button>
+        <button class="btn" id="btnPlay">Play</button>
+        <button class="btn secondary" id="btnMenuBoard">Leaderboard</button>
+        <button class="btn secondary" id="btnHowTo">How to Play</button>
+        <a class="btn secondary" href="guide.html" target="_blank" style="text-decoration:none">Player Guide ↗</a>
+      </div>
+      <p id="bestLine" style="margin-top:16px"></p>
+    </div></div>
+
+    <div class="overlay" id="ovName"><div class="box">
+      <h2>What's your name?</h2>
+      <p>It's shown on the global leaderboard. No account needed, and it's remembered on this device.</p>
+      <form id="nameForm" autocomplete="off">
+        <input class="name" id="nameInput" maxlength="16" placeholder="Player name" spellcheck="false">
+        <div class="err" id="nameErr"></div>
+        <button class="btn" type="submit">Save</button>
+        <button class="btn secondary" type="button" id="btnNameCancel">Cancel</button>
+      </form>
+    </div></div>
+
+    <div class="overlay" id="ovHelp"><div class="box">
+      <h2>How to Play</h2>
       <p>Drop balls through the pegs. Every peg hit adds points, then the bucket multiplies them. Hit the target before you run out of balls to climb to the next floor and pick an upgrade.</p>
       <div class="legend">
         <div><span class="dot" style="background:#cfc8ff"></span>Peg: +points per hit</div>
@@ -149,9 +199,15 @@
         <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
       </div>
       <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>Every 5th floor is a boss with a nasty twist.</p>
-      <button class="btn" id="btnStart">Start Run</button>
-      <p style="margin-top:10px"><a href="guide.html" target="_blank" style="color:var(--accent);font-weight:700">Player guide ↗</a></p>
-      <p id="bestLine" style="margin-top:12px"></p>
+      <p><a class="link" href="guide.html" target="_blank">Full player guide ↗</a></p>
+      <button class="btn" data-back>Back</button>
+    </div></div>
+
+    <div class="overlay" id="ovBoard"><div class="box">
+      <h2>Leaderboard</h2>
+      <p class="board-note" id="boardNote">Best run per player · highest floor, then score</p>
+      <div id="boardBody"><p>Loading…</p></div>
+      <button class="btn" data-back>Back</button>
     </div></div>
 
     <div class="overlay" id="ovReward"><div class="box">
@@ -169,7 +225,12 @@
       <h2 style="color:var(--red)">Run over</h2>
       <p id="overInfo"></p>
       <div class="stats" id="overStats"></div>
+      <p class="submit-line" id="submitLine"></p>
       <button class="btn" id="btnRestart">New Run</button>
+      <div>
+        <button class="btn secondary" id="btnOverBoard">Leaderboard</button>
+        <button class="btn secondary" id="btnOverMenu">Main Menu</button>
+      </div>
     </div></div>
 
     <div class="toast" id="toast"></div>
@@ -199,6 +260,96 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('plinkoRL_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('plinkoRL_' + k, JSON.stringify(v)); } catch (e) {} }
 };
+
+// ---------- Leaderboard config ----------
+// Paste your Supabase project values here (Project Settings → API).
+// Leave empty to keep scores on this device only.
+const SUPABASE_URL = 'https://hkfyyhnujjuktqovnsby.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_f2J4z9X9m_ex2G_vIuHqQw_rE9MKl3r'; // the anon / publishable key (safe to expose)
+const ONLINE = !!(SUPABASE_URL && SUPABASE_KEY);
+
+// ---------- Player identity (no login) ----------
+function readCookie(k) { const m = document.cookie.match('(?:^|; )' + k + '=([^;]*)'); return m ? decodeURIComponent(m[1]) : null; }
+function writeCookie(k, v) { try { document.cookie = `${k}=${encodeURIComponent(v)}; max-age=${60 * 60 * 24 * 400}; path=/; SameSite=Lax`; } catch (e) {} }
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+}
+const player = {
+  id: store.get('pid', null) || readCookie('plinko_pid'),
+  name: store.get('name', null) || readCookie('plinko_name'),
+};
+if (!player.id) player.id = uuid();
+store.set('pid', player.id); writeCookie('plinko_pid', player.id);
+function setName(n) { player.name = n; store.set('name', n); writeCookie('plinko_name', n); $('whoName').textContent = n; }
+function cleanName(raw) { return raw.replace(/\s+/g, ' ').trim(); }
+function nameProblem(n) {
+  if (n.length < 2) return 'At least 2 characters.';
+  if (n.length > 16) return '16 characters max.';
+  if (!/^[\p{L}\p{N} _.\-]+$/u.test(n)) return 'Letters, numbers, spaces, _ . - only.';
+  return '';
+}
+
+// ---------- Leaderboard ----------
+const sbHeaders = extra => {
+  const h = { apikey: SUPABASE_KEY, 'Content-Type': 'application/json', ...extra };
+  if (SUPABASE_KEY.startsWith('eyJ')) h.Authorization = 'Bearer ' + SUPABASE_KEY;
+  return h;
+};
+const board = {
+  async submit(r) {
+    const row = { player_id: player.id, name: player.name, floor: r.floor, score: r.score, best_ball: r.bestBall };
+    if (!ONLINE) {
+      const list = store.get('localRuns', []);
+      list.push({ ...row, created_at: new Date().toISOString() });
+      store.set('localRuns', list.slice(-200));
+      return;
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/runs`, { method: 'POST', headers: sbHeaders({ Prefer: 'return=minimal' }), body: JSON.stringify(row) });
+    if (!res.ok) throw new Error('submit ' + res.status);
+  },
+  async top(limit = 25) {
+    if (!ONLINE) {
+      const best = new Map();
+      for (const r of store.get('localRuns', [])) {
+        const b = best.get(r.player_id);
+        if (!b || r.floor > b.floor || (r.floor === b.floor && r.score > b.score)) best.set(r.player_id, { ...r });
+      }
+      return [...best.values()].sort((a, b) => b.floor - a.floor || b.score - a.score).slice(0, limit);
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/leaderboard?select=player_id,name,floor,score&order=floor.desc,score.desc&limit=${limit}`, { headers: sbHeaders() });
+    if (!res.ok) throw new Error('load ' + res.status);
+    return res.json();
+  },
+  async rankOf(floor, score) {
+    if (!ONLINE) {
+      return (await this.top(1e6)).filter(r => r.player_id !== player.id && (r.floor > floor || (r.floor === floor && r.score > score))).length + 1;
+    }
+    const q = `or=(floor.gt.${floor},and(floor.eq.${floor},score.gt.${score}))&player_id=neq.${player.id}&select=player_id`;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/leaderboard?${q}`, { headers: sbHeaders({ Prefer: 'count=exact', Range: '0-0' }) });
+    if (!res.ok) throw new Error('rank ' + res.status);
+    const cr = res.headers.get('content-range') || '';
+    const n = parseInt(cr.split('/')[1], 10);
+    return isNaN(n) ? null : n + 1;
+  },
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function showBoard() {
+  showOverlay('ovBoard');
+  $('boardNote').textContent = ONLINE ? 'Best run per player · highest floor, then score' : 'Global leaderboard not connected yet · showing runs on this device';
+  const body = $('boardBody');
+  body.innerHTML = '<p>Loading…</p>';
+  try {
+    const rows = await board.top(25);
+    if (!rows.length) { body.innerHTML = '<p>No runs yet. Be the first!</p>'; return; }
+    body.innerHTML = `<table class="board"><tr><th class="num">#</th><th>Player</th><th class="num">Floor</th><th class="num">Score</th></tr>` +
+      rows.map((r, i) => `<tr class="${r.player_id === player.id ? 'me' : ''}"><td class="num">${i + 1}</td><td>${esc(r.name)}</td><td class="num">${r.floor}</td><td class="num">${Number(r.score).toLocaleString()}</td></tr>`).join('') +
+      `</table>`;
+  } catch (e) {
+    body.innerHTML = '<p style="color:var(--red)">Couldn\'t load the leaderboard. Check your connection and try again.</p>';
+  }
+}
 
 // ---------- Audio ----------
 let audioCtx = null, muted = store.get('muted', false);
@@ -528,6 +679,22 @@ function floorFailed() {
     <div class="stat"><b>${best.floor}</b><span>Best floor ever</span></div>`;
   sfx(196, 0.4, 'sawtooth', 0.06);
   showOverlay('ovOver');
+  submitRun();
+}
+
+async function submitRun() {
+  const r = { floor: run.floor, score: run.totalScore, bestBall: run.bestBall };
+  const line = $('submitLine');
+  line.style.color = 'var(--accent)';
+  line.textContent = ONLINE ? 'Submitting score…' : '';
+  try {
+    await board.submit(r);
+    const rank = await board.rankOf(r.floor, r.score);
+    if (ONLINE) line.textContent = rank ? `Submitted as ${player.name} · this run ranks #${rank}` : `Submitted as ${player.name}`;
+  } catch (e) {
+    line.style.color = 'var(--red)';
+    line.textContent = 'Couldn\'t submit your score (offline?).';
+  }
 }
 
 function saveBest() {
@@ -580,12 +747,69 @@ function nextFloor() { run.floor++; startFloor(); }
 $('btnReroll').onclick = () => { const rc = 2 + run.rerolls; if (run.coins < rc) return; run.coins -= rc; run.rerolls++; rollOffer(); sfx(600, 0.06); };
 $('btnBuyBall').onclick = () => { if (run.coins < 6) return; run.coins -= 6; run.bonusBalls++; refreshShopButtons(); sfx(700, 0.06); };
 $('btnSkip').onclick = () => { run.coins += 4; nextFloor(); };
-$('btnStart').onclick = () => { sfx(440, 0.05); newRun(); };
 $('btnRestart').onclick = () => { newRun(); };
+
+// ---------- Menu ----------
+let paused = null;      // { mode, overlay } of the run we paused, or null
+let menuReturn = 'ovMenu'; // where Back goes from sub-screens
+let afterName = null;   // action to run once a name is saved
+
+function runInProgress() { return paused && (paused.mode === 'play' || paused.mode === 'reward'); }
+function openMenu() {
+  if (mode === 'play' || mode === 'reward') {
+    paused = { mode, overlay: mode === 'reward' ? 'ovReward' : null };
+    mode = 'paused';
+  }
+  if (mode === 'over') paused = null;
+  $('btnResume').style.display = runInProgress() ? '' : 'none';
+  $('btnPlay').textContent = runInProgress() ? 'New Run' : 'Play';
+  $('btnPlay').classList.toggle('secondary', runInProgress());
+  const best = store.get('best', null);
+  $('bestLine').textContent = best && best.floor ? `Your best: floor ${best.floor} · ${best.score.toLocaleString()} total points` : '';
+  menuReturn = 'ovMenu';
+  if (mode !== 'paused') mode = 'menu';
+  showOverlay('ovMenu');
+}
+function resumeRun() {
+  if (!runInProgress()) return;
+  mode = paused.mode; showOverlay(paused.overlay); paused = null;
+}
+function askName(then) {
+  afterName = then || null;
+  $('nameInput').value = player.name || '';
+  $('nameErr').textContent = '';
+  $('btnNameCancel').style.display = player.name ? '' : 'none';
+  showOverlay('ovName');
+  setTimeout(() => $('nameInput').focus(), 50);
+}
+function startPlay() {
+  if (!player.name) return askName(startPlay);
+  paused = null; sfx(440, 0.05); newRun();
+}
+
+$('menuBtn').onclick = () => { if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
+$('btnPlay').onclick = startPlay;
+$('btnResume').onclick = resumeRun;
+$('btnMenuBoard').onclick = () => { menuReturn = 'ovMenu'; showBoard(); };
+$('btnHowTo').onclick = () => { menuReturn = 'ovMenu'; showOverlay('ovHelp'); };
+$('btnChangeName').onclick = () => askName(null);
+$('btnOverBoard').onclick = () => { menuReturn = 'ovOver'; showBoard(); };
+$('btnOverMenu').onclick = () => { paused = null; openMenu(); };
+$('btnNameCancel').onclick = () => showOverlay('ovMenu');
+for (const b of document.querySelectorAll('[data-back]')) b.onclick = () => showOverlay(menuReturn);
+$('nameForm').onsubmit = e => {
+  e.preventDefault();
+  const n = cleanName($('nameInput').value);
+  const err = nameProblem(n);
+  if (err) { $('nameErr').textContent = err; return; }
+  setName(n);
+  const next = afterName; afterName = null;
+  if (next) next(); else showOverlay('ovMenu');
+};
 
 // ---------- UI ----------
 function showOverlay(id) {
-  for (const o of ['ovStart', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
+  for (const o of ['ovMenu', 'ovName', 'ovHelp', 'ovBoard', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
 }
 let toastTimer = null;
 function toast(html, ms = 1800) {
@@ -642,7 +866,9 @@ canvas.addEventListener('pointermove', e => { aimX = clampAim(toBoardX(e.clientX
 canvas.addEventListener('pointerdown', e => { aimX = clampAim(toBoardX(e.clientX)); drop(); });
 const keys = {};
 window.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
   keys[e.key] = true;
+  if (e.key === 'Escape') { if (mode === 'paused') resumeRun(); else if (mode === 'play' || mode === 'reward') openMenu(); return; }
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
 });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -812,11 +1038,12 @@ function update(dt) {
 }
 
 // ---------- Boot ----------
-const best = store.get('best', null);
-if (best && best.floor) $('bestLine').textContent = `Best: floor ${best.floor} · ${best.score.toLocaleString()} total points`;
 // draw an idle board behind the start menu
 run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore: 0, bestBall: 0, rerolls: 0 };
-startFloor(); mode = 'menu'; showOverlay('ovStart');
+startFloor(); mode = 'menu';
+if (player.name) setName(player.name);
+openMenu();
+if (!player.name) askName(() => showOverlay('ovMenu'));
 fitCanvas();
 requestAnimationFrame(frame);
 
@@ -834,7 +1061,7 @@ window.__plinko = {
       let s = 0; while (balls.length && s < 60 * 30 * 6) { stepPhysics(1 / 360); s++; }
       guard++;
     }
-    const score = fl.score; mode = 'menu'; showOverlay('ovStart');
+    const score = fl.score; mode = 'menu'; showOverlay('ovMenu');
     return { score, target };
   },
 };
