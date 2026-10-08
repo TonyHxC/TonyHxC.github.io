@@ -64,7 +64,7 @@
   .bdot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   .bdot.used { background: #2f2858; box-shadow: none; }
   #stage { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; }
-  canvas { display: block; border-radius: 14px; background: #120f26; box-shadow: 0 0 0 1px #2f2858, 0 10px 40px #0008; cursor: crosshair; }
+  #c { display: block; border-radius: 14px; background: #120f26; box-shadow: 0 0 0 1px #2f2858, 0 10px 40px #0008; cursor: crosshair; }
   #relics { width: 100%; max-width: 600px; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; min-height: 22px; }
   .relic { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: var(--panel2); border: 1px solid #3a3270; cursor: help; }
   .relic.rare { border-color: #4d7cff; }
@@ -142,6 +142,22 @@
   .board-note { font-size: 12px; color: var(--muted); }
   .submit-line { font-size: 14px; font-weight: 700; color: var(--accent); min-height: 20px; }
   a.link { color: var(--accent); font-weight: 700; }
+  .btn .mini { display: inline-block; width: 18px; height: 18px; vertical-align: -4px; margin-right: 8px; border-radius: 50%; }
+  .paint-wrap { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 10px 0 6px; }
+  #paintCanvas { width: min(56vw, 230px); height: min(56vw, 230px); border-radius: 50%; background: #fff; cursor: crosshair;
+    box-shadow: 0 0 0 3px #3a3270, 0 0 24px #7cf5ff33; touch-action: none; }
+  .paint-side { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-weight: 700; }
+  #ballPreview { width: 56px; height: 56px; }
+  .swatches { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 8px auto; max-width: 340px; }
+  .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #ffffff22; cursor: pointer; padding: 0; }
+  .sw.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .sw-custom { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+  .sw-custom input { position: absolute; inset: -6px; opacity: 0; cursor: pointer; width: 40px; height: 40px; }
+  .tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 6px 0; }
+  .tool { font: inherit; font-size: 13px; font-weight: 700; color: var(--text); background: var(--panel2); border: 1px solid #3a3270;
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .tool.on { border-color: var(--accent); color: var(--accent); }
+  .tool .dotsz { display: inline-block; background: currentColor; border-radius: 50%; vertical-align: middle; }
   @media (max-width: 480px) {
     .cards { grid-template-columns: 1fr; }
     .card { flex-direction: row; align-items: center; text-align: left; gap: 10px; }
@@ -170,6 +186,7 @@
       <div class="menu-col">
         <button class="btn" id="btnResume" style="display:none">Resume Run</button>
         <button class="btn" id="btnPlay">Play</button>
+        <button class="btn secondary" id="btnCustomize"><canvas class="mini" id="menuBallIcon" width="36" height="36"></canvas>Customize Ball</button>
         <button class="btn secondary" id="btnMenuBoard">Leaderboard</button>
         <button class="btn secondary" id="btnHowTo">How to Play</button>
         <a class="btn secondary" href="guide.html" target="_blank" style="text-decoration:none">Player Guide ↗</a>
@@ -198,9 +215,33 @@
         <div><span class="dot" style="background:#ff9a3c"></span>Bomb peg: triggers every peg nearby</div>
         <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
       </div>
-      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>Every 5th floor is a boss with a nasty twist.</p>
+      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Every 5th floor is a boss with a nasty twist.</p>
       <p><a class="link" href="guide.html" target="_blank">Full player guide ↗</a></p>
       <button class="btn" data-back>Back</button>
+    </div></div>
+
+    <div class="overlay" id="ovBall"><div class="box">
+      <h2>Customize Your Ball</h2>
+      <p style="margin:0">Paint anything you like. It spins as it rolls.</p>
+      <div class="paint-wrap">
+        <canvas id="paintCanvas" width="256" height="256"></canvas>
+        <div class="paint-side"><canvas id="ballPreview" width="112" height="112"></canvas>Preview</div>
+      </div>
+      <div class="swatches" id="swatches"></div>
+      <div class="tools">
+        <button class="tool" data-size="6"><span class="dotsz" style="width:6px;height:6px"></span> S</button>
+        <button class="tool on" data-size="14"><span class="dotsz" style="width:10px;height:10px"></span> M</button>
+        <button class="tool" data-size="30"><span class="dotsz" style="width:14px;height:14px"></span> L</button>
+        <button class="tool" id="tFill">Fill</button>
+        <button class="tool" id="tMirror">Mirror</button>
+      </div>
+      <div class="tools">
+        <button class="tool" id="tUndo">↶ Undo</button>
+        <button class="tool" id="tClear">Clear</button>
+        <button class="tool" id="tDefault">Default ball</button>
+      </div>
+      <button class="btn" id="btnBallSave">Save</button>
+      <button class="btn secondary" id="btnBallCancel">Cancel</button>
     </div></div>
 
     <div class="overlay" id="ovBoard"><div class="box">
@@ -376,6 +417,7 @@ const UPGRADES = [
   { id: 'big',     name: 'Big Ball',     icon: '◉', rarity: 'common', max: 2, desc: 'Balls are bigger and hit more pegs.' },
   { id: 'bouncy',  name: 'Rubber Ball',  icon: '◎', rarity: 'common', max: 3, desc: 'Balls bounce higher, staying on the board longer.' },
   { id: 'center',  name: 'Safe Middle',  icon: '▣', rarity: 'common', max: 5, desc: 'The 3 middle buckets get +0.6×.' },
+  { id: 'nudge',   name: 'Smack',        icon: '✋', rarity: 'common', max: 5, desc: '+1 smack per floor. Swipe your cursor through a falling ball to hit it. Faster swipe = harder hit.' },
   { id: 'interest',name: 'Interest',     icon: '¢', rarity: 'common', max: 3, desc: 'After each floor, +1 coin per 5 you hold (up to +3 per level).' },
   { id: 'crit',    name: 'Red Pegs',     icon: '✚', rarity: 'rare',   max: 5, desc: '+1 red peg. Red pegs double the ball\'s multiplier.' },
   { id: 'bomb',    name: 'Bomb Pegs',    icon: '✹', rarity: 'rare',   max: 4, desc: '+1 bomb peg. Bombs trigger every peg nearby.' },
@@ -461,8 +503,8 @@ function startFloor(keepLayout) {
     }
     mults = mults.map(m => Math.round(m * 10) / 10);
   }
-  fl = { pegs, mults, boss, target: targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0 };
-  balls = []; particles = []; texts = [];
+  fl = { pegs, mults, boss, target: targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
+  balls = []; particles = []; texts = []; fire = []; eruptions = []; eruptHoldUntil = 0;
   mode = 'play';
   for (const p of pegs) p.flash = 0;
   showOverlay(null);
@@ -573,6 +615,7 @@ function settle(b) {
   addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
   burst(cx, BUCKET_TOP + 20, col, m >= 4 ? 30 : 12, m >= 4 ? 260 : 140);
   bucketFlash[i] = 1;
+  if ((b.fireTier || 0) > 0 && m >= ERUPT_MIN_BUCKET) startEruption(i, b.fireTier, m);
   if (m >= 4) { shake = Math.max(shake, 8); sfx(1046, 0.25, 'triangle', 0.08); setTimeout(() => sfx(1568, 0.25, 'triangle', 0.06), 90); }
   else sfx(m === 0 ? 120 : 523, 0.15, 'triangle', 0.06);
   updateHUD();
@@ -593,6 +636,7 @@ function stepPhysics(dt) {
     const sp = Math.hypot(b.vx, b.vy);
     if (sp > 1100) { b.vx *= 1100 / sp; b.vy *= 1100 / sp; }
     b.x += b.vx * dt;
+    b.rot = (b.rot || 0) + b.vx * dt / b.r;
     b.y += b.vy * dt;
 
     // walls
@@ -634,7 +678,7 @@ function stepPhysics(dt) {
 }
 
 function checkFloorEnd() {
-  if (mode !== 'play' || balls.length) return;
+  if (mode !== 'play' || balls.length || eruptions.length || time < eruptHoldUntil) return;
   if (fl.score >= fl.target) floorCleared();
   else if (fl.ballsLeft <= 0) floorFailed();
 }
@@ -809,7 +853,7 @@ $('nameForm').onsubmit = e => {
 
 // ---------- UI ----------
 function showOverlay(id) {
-  for (const o of ['ovMenu', 'ovName', 'ovHelp', 'ovBoard', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
+  for (const o of ['ovMenu', 'ovName', 'ovHelp', 'ovBall', 'ovBoard', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
 }
 let toastTimer = null;
 function toast(html, ms = 1800) {
@@ -829,7 +873,8 @@ function updateHUD() {
     const row = $('ballsRow');
     let html = '';
     for (let i = 0; i < fl.ballsTotal; i++) html += `<div class="bdot ${i < fl.ballsTotal - fl.ballsLeft ? 'used' : ''}"></div>`;
-    row.innerHTML = html + `<span style="margin-left:6px">${fl.ballsLeft} ball${fl.ballsLeft === 1 ? '' : 's'} left</span>`;
+    row.innerHTML = html + `<span style="margin-left:6px">${fl.ballsLeft} ball${fl.ballsLeft === 1 ? '' : 's'} left</span>` +
+      (U('nudge') ? `<span style="margin-left:auto;color:${fl.nudges ? 'var(--gold)' : 'var(--muted)'};font-weight:800" title="Smacks left this floor">✋ ${fl.nudges}/${U('nudge')}</span>` : '');
   }
   const rel = $('relics');
   rel.innerHTML = '';
@@ -862,8 +907,42 @@ function toBoardX(clientX) {
   return (clientX - r.left) / r.width * W;
 }
 function clampAim(x) { const r = ballRadius(); return Math.max(WALL_L + r + 2, Math.min(WALL_R - r - 2, x)); }
-canvas.addEventListener('pointermove', e => { aimX = clampAim(toBoardX(e.clientX)); });
-canvas.addEventListener('pointerdown', e => { aimX = clampAim(toBoardX(e.clientX)); drop(); });
+let pointer = null;   // board coords of the cursor
+let trail = [];       // recent cursor samples {x, y, t} for swipe speed
+let touchStart = null;
+function toBoard(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+function trackPointer(e) {
+  const p = toBoard(e), t = performance.now();
+  const prev = pointer;
+  pointer = p;
+  trail.push({ x: p.x, y: p.y, t });
+  while (trail.length > 2 && t - trail[0].t > 70) trail.shift();
+  aimX = clampAim(p.x);
+  if (prev) swipeCheck(prev, p);
+}
+canvas.addEventListener('pointermove', e => {
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  if (evs.length) for (const ce of evs) trackPointer(ce); else trackPointer(e);
+});
+canvas.addEventListener('pointerleave', () => { pointer = null; trail = []; });
+canvas.addEventListener('pointerdown', e => {
+  pointer = toBoard(e); trail = [{ x: pointer.x, y: pointer.y, t: performance.now() }];
+  aimX = clampAim(pointer.x);
+  if (e.pointerType === 'mouse') drop();
+  else { touchStart = { x: pointer.x, y: pointer.y, t: performance.now() }; try { canvas.setPointerCapture(e.pointerId); } catch (_) {} }
+});
+canvas.addEventListener('pointerup', e => {
+  if (e.pointerType !== 'mouse' && touchStart) {
+    const p = toBoard(e);
+    const moved = Math.hypot(p.x - touchStart.x, p.y - touchStart.y);
+    if (moved < 14 && performance.now() - touchStart.t < 350) { aimX = clampAim(p.x); drop(); }
+    touchStart = null; pointer = null; trail = [];
+  }
+});
+
 const keys = {};
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
@@ -872,6 +951,310 @@ window.addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
 });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ---------- Smack (swipe through a ball) ----------
+const SMACK_MIN_SPEED = 420;   // board px/s the cursor must move to count as a smack
+const SMACK_MIN_POWER = 220;   // impulse at the slowest valid swipe
+const SMACK_MAX_POWER = 950;   // impulse cap for a full-speed flick
+const SMACK_SCALE = 0.55;      // cursor speed -> ball speed
+const SMACK_GRACE = 6;         // extra px of contact around the ball
+function cursorVelocity() {
+  if (trail.length < 2) return { vx: 0, vy: 0, sp: 0 };
+  const a = trail[0], b = trail[trail.length - 1];
+  const dt = Math.max(0.008, (b.t - a.t) / 1000);
+  const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
+  return { vx, vy, sp: Math.hypot(vx, vy) };
+}
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  const t = L ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function smackable(b) { return b.y >= PEG_TOP - 20 && b.y <= BUCKET_TOP && b.age - (b.smackedAt ?? -9) > 0.3; }
+function swipeCheck(a, p) {
+  if (mode !== 'play' || !fl || fl.nudges <= 0) return;
+  const v = cursorVelocity();
+  if (v.sp < SMACK_MIN_SPEED) return;
+  for (const b of balls) {
+    if (!smackable(b)) continue;
+    if (segDist(b.x, b.y, a.x, a.y, p.x, p.y) < b.r + SMACK_GRACE) { smackBall(b, v); return; }
+  }
+}
+function smackBall(b, v) {
+  const power = Math.max(SMACK_MIN_POWER, Math.min(SMACK_MAX_POWER, v.sp * SMACK_SCALE));
+  let dx = v.vx / v.sp, dy = v.vy / v.sp;
+  if (dy > 0.3) { // can't spike it straight down into a bucket: steep down-swipes turn into sideways hits
+    dy = 0.3;
+    if (Math.abs(dx) < 0.6) dx = (dx === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(dx)) * 0.6;
+  }
+  const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+  b.vx = b.vx * 0.25 + dx * power;
+  b.vy = b.vy * 0.25 + dy * power;
+  b.smackedAt = b.age; b.sinceProgress = 0; b.maxY = Math.min(b.maxY, b.y);
+  fl.nudges--;
+  const hard = power > 650;
+  addText(b.x, b.y - 22, hard ? 'SMACK!!' : power > 400 ? 'SMACK!' : 'tap', '#ffd166', hard ? 22 : power > 400 ? 18 : 14);
+  burst(b.x, b.y, '#ffd166', hard ? 26 : 12, 120 + power * 0.25);
+  smackFx.push({ x: b.x, y: b.y, life: 0.25, big: hard });
+  shake = Math.max(shake, hard ? 9 : 4);
+  sfx(hard ? 120 : 200, 0.09, 'square', hard ? 0.11 : 0.07); sfx(hard ? 260 : 380, 0.06, 'triangle', 0.06);
+  updateHUD();
+}
+// test hook: swipe through a ball at a given cursor speed
+function testSmack(b, speed, dirx, diry) { const n = Math.hypot(dirx, diry); smackBall(b, { vx: dirx / n * speed, vy: diry / n * speed, sp: speed }); }
+const smackFx = [];
+
+// ---------- Ball skin (painter) ----------
+let ballSkin = null; // canvas holding the saved design, or null for the default ball
+function loadSkin(dataUrl, then) {
+  if (!dataUrl) { ballSkin = null; then && then(); return; }
+  const img = new Image();
+  img.onload = () => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; cv.getContext('2d').drawImage(img, 0, 0, 128, 128); ballSkin = cv; then && then(); };
+  img.onerror = () => { ballSkin = null; then && then(); };
+  img.src = dataUrl;
+}
+function drawMenuIcon() {
+  const ic = $('menuBallIcon'), c = ic.getContext('2d');
+  c.clearRect(0, 0, 36, 36); drawBall(18, 18, 16, false, 0, c, false);
+}
+
+const PAINT_COLORS = ['#ffffff', '#111111', '#ff5d73', '#ff9a3c', '#ffd166', '#6bff9e', '#2fcf72', '#7cf5ff', '#4d7cff', '#b98cff', '#ff6ec7', '#8b5a2b'];
+const pc = $('paintCanvas'), px = pc.getContext('2d');
+const PS = 256;
+const painter = { color: '#ff5d73', size: 14, mirror: false, fill: false, undo: [], drawing: false, last: null };
+let previewRot = 0, previewOn = false;
+
+function buildSwatches() {
+  const box = $('swatches'); box.innerHTML = '';
+  for (const col of PAINT_COLORS) {
+    const b = document.createElement('button');
+    b.className = 'sw' + (col === painter.color ? ' on' : ''); b.style.background = col; b.title = col;
+    b.onclick = () => { painter.color = col; buildSwatches(); };
+    box.appendChild(b);
+  }
+  const cu = document.createElement('label');
+  cu.className = 'sw sw-custom' + (PAINT_COLORS.includes(painter.color) ? '' : ' on'); cu.title = 'Custom color';
+  cu.innerHTML = '<input type="color">';
+  const inp = cu.querySelector('input'); inp.value = painter.color;
+  inp.oninput = () => { painter.color = inp.value; for (const el of box.querySelectorAll('.sw')) el.classList.remove('on'); cu.classList.add('on'); };
+  box.appendChild(cu);
+}
+function pushUndo() { painter.undo.push(px.getImageData(0, 0, PS, PS)); if (painter.undo.length > 25) painter.undo.shift(); }
+function paintClip(fn) { px.save(); px.beginPath(); px.arc(PS / 2, PS / 2, PS / 2, 0, Math.PI * 2); px.clip(); fn(); px.restore(); }
+function paintBase(col) { paintClip(() => { px.fillStyle = col; px.fillRect(0, 0, PS, PS); }); }
+function paintDefault() {
+  px.clearRect(0, 0, PS, PS);
+  paintClip(() => {
+    const g = px.createRadialGradient(PS * 0.38, PS * 0.36, PS * 0.04, PS / 2, PS / 2, PS / 2);
+    g.addColorStop(0, '#d9fbff'); g.addColorStop(1, '#39c6d6');
+    px.fillStyle = g; px.fillRect(0, 0, PS, PS);
+  });
+}
+function strokeSeg(a, b) {
+  const segs = [[a, b]];
+  if (painter.mirror) segs.push([{ x: PS - a.x, y: a.y }, { x: PS - b.x, y: b.y }]);
+  paintClip(() => {
+    px.strokeStyle = px.fillStyle = painter.color; px.lineWidth = painter.size; px.lineCap = px.lineJoin = 'round';
+    for (const [p, q] of segs) {
+      px.beginPath(); px.moveTo(p.x, p.y); px.lineTo(q.x, q.y); px.stroke();
+      if (p.x === q.x && p.y === q.y) { px.beginPath(); px.arc(p.x, p.y, painter.size / 2, 0, Math.PI * 2); px.fill(); }
+    }
+  });
+}
+function paintPos(e) { const r = pc.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * PS, y: (e.clientY - r.top) / r.height * PS }; }
+pc.addEventListener('pointerdown', e => {
+  e.preventDefault(); pushUndo();
+  if (painter.fill) { paintBase(painter.color); return; }
+  painter.drawing = true; painter.last = paintPos(e); strokeSeg(painter.last, painter.last);
+  try { pc.setPointerCapture(e.pointerId); } catch (_) {}
+});
+pc.addEventListener('pointermove', e => {
+  if (!painter.drawing) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of (evs.length ? evs : [e])) { const p = paintPos(ev); strokeSeg(painter.last, p); painter.last = p; }
+});
+const endStroke = () => { painter.drawing = false; painter.last = null; };
+pc.addEventListener('pointerup', endStroke); pc.addEventListener('pointercancel', endStroke);
+
+for (const b of document.querySelectorAll('.tool[data-size]')) b.onclick = () => {
+  painter.size = +b.dataset.size; painter.fill = false;
+  for (const o of document.querySelectorAll('.tool[data-size]')) o.classList.toggle('on', o === b);
+  $('tFill').classList.remove('on');
+};
+$('tFill').onclick = () => { painter.fill = !painter.fill; $('tFill').classList.toggle('on', painter.fill); for (const o of document.querySelectorAll('.tool[data-size]')) o.classList.toggle('on', !painter.fill && +o.dataset.size === painter.size); };
+$('tMirror').onclick = () => { painter.mirror = !painter.mirror; $('tMirror').classList.toggle('on', painter.mirror); };
+$('tUndo').onclick = () => { const d = painter.undo.pop(); if (d) px.putImageData(d, 0, 0); };
+$('tClear').onclick = () => { pushUndo(); px.clearRect(0, 0, PS, PS); paintBase('#ffffff'); };
+$('tDefault').onclick = () => { pushUndo(); paintDefault(); painter.isDefault = true; };
+pc.addEventListener('pointerdown', () => { painter.isDefault = false; });
+$('tClear').addEventListener('click', () => { painter.isDefault = false; });
+
+function openPainter() {
+  painter.undo = []; painter.fill = false; $('tFill').classList.remove('on');
+  painter.isDefault = !ballSkin;
+  px.clearRect(0, 0, PS, PS);
+  if (ballSkin) paintClip(() => px.drawImage(ballSkin, 0, 0, PS, PS)); else paintDefault();
+  buildSwatches();
+  showOverlay('ovBall');
+  previewOn = true; requestAnimationFrame(drawPreview);
+}
+function closePainter() { previewOn = false; showOverlay('ovMenu'); }
+function drawPreview() {
+  if (!previewOn) return;
+  const pv = $('ballPreview'), c = pv.getContext('2d');
+  previewRot += 0.03;
+  c.clearRect(0, 0, 112, 112);
+  const save = ballSkin; ballSkin = pc; // preview what's on the easel right now
+  drawBall(56, 56, 44, false, previewRot, c, false);
+  ballSkin = save;
+  requestAnimationFrame(drawPreview);
+}
+$('btnCustomize').onclick = openPainter;
+$('btnBallCancel').onclick = closePainter;
+$('btnBallSave').onclick = () => {
+  if (painter.isDefault) { store.set('ballArt', null); loadSkin(null, drawMenuIcon); }
+  else {
+    const out = document.createElement('canvas'); out.width = out.height = 128;
+    out.getContext('2d').drawImage(pc, 0, 0, 128, 128);
+    const url = out.toDataURL('image/png');
+    store.set('ballArt', url); ballSkin = out; drawMenuIcon();
+  }
+  sfx(988, 0.12, 'square', 0.04);
+  closePainter();
+};
+
+// ---------- Fire ----------
+const FIRE_TIERS = [
+  null,
+  { name: 'ON FIRE!',   min: 4,  text: '#ff9a3c', stops: [[255, 250, 220], [255, 214, 100], [255, 150, 45], [235, 80, 20], [150, 35, 10], [70, 15, 5]] },
+  { name: 'BLUE FLAME!', min: 8, text: '#7cc8ff', stops: [[240, 252, 255], [160, 225, 255], [90, 160, 255], [60, 90, 235], [45, 35, 160], [20, 15, 70]] },
+  { name: 'INFERNO!',   min: 16, text: '#e08cff', stops: [[255, 240, 255], [255, 160, 250], [215, 90, 255], [150, 45, 220], [80, 20, 120], [35, 10, 55]] },
+];
+const ERUPT_MIN_BUCKET = 4;
+const FIRE_CAP = 1600;
+// pre-rendered soft glow sprites per tier and age step
+const fireSprites = FIRE_TIERS.map(t => t && t.stops.map(([r, g, b]) => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const c = cv.getContext('2d'), gr = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(0.22, `rgba(${r},${g},${b},0.85)`); gr.addColorStop(0.55, `rgba(${r},${g},${b},0.22)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  c.fillStyle = gr; c.fillRect(0, 0, 64, 64); return cv;
+}));
+let fire = [], eruptions = [], eruptHoldUntil = 0;
+const fireTierFor = m => m >= 16 ? 3 : m >= 8 ? 2 : m >= 4 ? 1 : 0;
+
+function spawnFlame(x, y, vx, vy, size, life, tier, homeX) {
+  if (fire.length >= FIRE_CAP) return;
+  fire.push({ x, y, vx, vy, size, life, max: life, tier, seed: Math.random() * 100, homeX });
+}
+function igniteCheck(b) {
+  const t = fireTierFor(b.mult);
+  if (t > (b.fireTier || 0)) {
+    b.fireTier = t;
+    const T = FIRE_TIERS[t];
+    addText(b.x, b.y - 30, T.name, T.text, 16 + t * 3, 1.1);
+    for (let i = 0; i < 18 + t * 8; i++) { const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 220; spawnFlame(b.x, b.y, Math.cos(a) * sp, Math.sin(a) * sp, b.r * 1.6, 0.35 + Math.random() * 0.3, t); }
+    sfxNoise(0.35, 0.08 + t * 0.03, 900 + t * 400);
+  }
+}
+function emitBallFire(b, dt) {
+  const t = b.fireTier || 0; if (!t) return;
+  const n = Math.max(1, Math.round((2 + t * 2) * dt * 60));
+  for (let i = 0; i < n; i++) {
+    spawnFlame(b.x + (Math.random() - 0.5) * b.r, b.y + (Math.random() - 0.5) * b.r,
+      -b.vx * 0.2 + (Math.random() - 0.5) * 60, -b.vy * 0.2 - 40 - Math.random() * 60,
+      b.r * (1.0 + 0.35 * t) * (0.7 + Math.random() * 0.6), 0.3 + Math.random() * 0.25 + t * 0.05, t);
+  }
+}
+function startEruption(bucketIdx, tier, mult) {
+  const bw = (WALL_R - WALL_L) / BUCKET_COUNT;
+  const x0 = WALL_L + bucketIdx * bw + 6, x1 = x0 + bw - 12;
+  const power = Math.min(1.9, 0.75 + tier * 0.25 + Math.min(mult, 20) * 0.03);
+  const dur = 0.7 + tier * 0.25;
+  eruptions.push({ x0, x1, t: 0, dur, tier, power, idx: bucketIdx });
+  eruptHoldUntil = Math.max(eruptHoldUntil, time + dur + 1.0);
+  shake = Math.max(shake, 10 + tier * 4);
+  sfxNoise(dur + 0.6, 0.16 + tier * 0.04, 500 + tier * 150);
+  sfx(70, 0.6, 'sawtooth', 0.1);
+}
+function updateFire(dt) {
+  // eruptions feed the fire column
+  for (let i = eruptions.length - 1; i >= 0; i--) {
+    const e = eruptions[i]; e.t += dt;
+    const k = e.t / e.dur, surge = k < 0.15 ? 1.4 : 1 - 0.5 * k;
+    const n = Math.round(dt * 700 * e.power * surge);
+    for (let j = 0; j < n; j++) {
+      const x = e.x0 + Math.random() * (e.x1 - e.x0);
+      spawnFlame(x, BUCKET_TOP + 8 + Math.random() * 20, (Math.random() - 0.5) * 40,
+        -(900 + Math.random() * 500) * e.power * (0.85 + 0.3 * surge),
+        9 + Math.random() * 9 * e.power, 0.55 + Math.random() * 0.45, e.tier, (e.x0 + e.x1) / 2);
+    }
+    bucketFlash[e.idx] = 1;
+    if (e.t >= e.dur) eruptions.splice(i, 1);
+  }
+  const drag = Math.exp(-1.5 * dt);
+  for (let i = fire.length - 1; i >= 0; i--) {
+    const f = fire[i];
+    f.life -= dt;
+    if (f.life <= 0 || f.y < -40) { fire.splice(i, 1); continue; }
+    f.vy -= 380 * dt;                                                   // buoyancy
+    f.vx += Math.sin(time * 7 + f.y * 0.045 + f.seed * 0.15) * 110 * dt; // coherent flicker
+    f.vy *= drag;
+    f.vx *= Math.exp(-5 * dt);                                          // flames don't drift sideways for long
+    if (f.homeX !== undefined) f.vx += (f.homeX - f.x) * 16 * dt;       // column re-forms after passing a peg
+    if (f.vx > 380) f.vx = 380; else if (f.vx < -380) f.vx = -380;
+    // flow around pegs: strip the velocity heading into the peg and redirect it along the surface
+    if (fl && f.y > PEG_TOP - 30 && f.y < BUCKET_TOP) {
+      const row = Math.round((f.y - PEG_TOP) / ROW_GAP);
+      for (const p of fl.pegs) {
+        if (p.row < row - 1 || p.row > row + 1) continue;
+        const dx = f.x - p.x, dy = f.y - p.y, R = p.r + 10;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > R * R || d2 < 0.01) continue;
+        const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+        const vn = f.vx * nx + f.vy * ny;
+        if (vn < 0) {
+          f.vx -= vn * nx; f.vy -= vn * ny;            // remove inward part
+          const tx = -ny, ty = nx, side = (f.vx * tx + f.vy * ty) >= 0 ? 1 : -1;
+          f.vx += tx * side * -vn * 0.4; f.vy += ty * side * -vn * 0.4; // curl around the peg
+        }
+        f.x = p.x + nx * Math.max(d, R * 0.85); f.y = p.y + ny * Math.max(d, R * 0.85);
+        p.heat = Math.min(1, (p.heat || 0) + dt * 3);
+      }
+    }
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    if (f.x < WALL_L) { f.x = WALL_L; f.vx = Math.abs(f.vx) * 0.5; }
+    if (f.x > WALL_R) { f.x = WALL_R; f.vx = -Math.abs(f.vx) * 0.5; }
+  }
+  if (fl) for (const p of fl.pegs) if (p.heat) p.heat = Math.max(0, p.heat - dt * 1.2);
+}
+function drawFire() {
+  if (!fire.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const f of fire) {
+    const age = 1 - f.life / f.max, spr = fireSprites[f.tier];
+    const idx = Math.min(spr.length - 1, Math.floor(age * spr.length));
+    const sz = f.size * (0.55 + age * 0.9);
+    ctx.globalAlpha = Math.min(1, (f.life / f.max) * 1.8) * 0.75;
+    ctx.drawImage(spr[idx], f.x - sz, f.y - sz, sz * 2, sz * 2);
+  }
+  ctx.restore();
+}
+let noiseBuf = null;
+function sfxNoise(dur, vol, freq) {
+  if (muted) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!noiseBuf) { noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+    src.buffer = noiseBuf; f.type = 'lowpass'; f.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(vol, audioCtx.currentTime + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    src.connect(f).connect(g).connect(audioCtx.destination);
+    src.start(); src.stop(audioCtx.currentTime + dur + 0.05);
+  } catch (e) {}
+}
 
 // ---------- Render ----------
 function draw() {
@@ -919,6 +1302,12 @@ function draw() {
     ctx.fillStyle = p.flash > 0 ? '#ffffff' : col;
     const rr = p.r + (p.type !== 'normal' ? 1.5 : 0) + p.flash * 3;
     ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2); ctx.fill();
+    if (p.heat > 0.02) {
+      ctx.shadowColor = '#ff7a1a'; ctx.shadowBlur = 16 * p.heat;
+      ctx.globalAlpha = Math.min(1, p.heat); ctx.fillStyle = p.heat > 0.6 ? '#fff1c4' : '#ffa040';
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr + 1, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    }
     if (p.flash > 0) {
       ctx.globalAlpha = p.flash * 0.6; ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(p.x, p.y, rr * 0.7, 0, Math.PI * 2); ctx.fill();
@@ -944,6 +1333,9 @@ function draw() {
     ctx.fillText(m === 0 ? '✕' : '×' + fmt(m), x + bw / 2, BUCKET_TOP + 40);
   }
 
+  // fire (ball flames + eruptions), additive
+  drawFire();
+
   // balls
   for (const b of balls) {
     for (let i = 0; i < b.trail.length; i++) {
@@ -953,7 +1345,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(t.x, t.y, b.r * (0.4 + 0.6 * i / b.trail.length), 0, Math.PI * 2); ctx.fill();
     }
     ctx.globalAlpha = 1;
-    drawBall(b.x, b.y, b.r, b.mult > 1);
+    drawBall(b.x, b.y, b.r, b.mult > 1, b.rot || 0);
     if (b.pts > 0) {
       ctx.font = '800 12px system-ui, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
@@ -961,6 +1353,23 @@ function draw() {
       ctx.fillText(b.pts + (b.mult !== 1 ? ' ×' + fmt(b.mult) : ''), b.x, b.y - b.r - 3);
     }
   }
+
+  // smack ring
+  if (mode === 'play' && pointer) {
+    const t = fl.nudges > 0 ? balls.find(b => smackable(b) && Math.hypot(b.x - pointer.x, b.y - pointer.y) < b.r + 40) : null;
+    if (t) {
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 0.6 + 0.3 * Math.sin(time * 14);
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  for (const f of smackFx) {
+    const k = 1 - f.life / 0.25;
+    ctx.globalAlpha = f.life / 0.25; ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 8 + k * (f.big ? 48 : 28), 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 
   // particles
   for (const p of particles) {
@@ -984,15 +1393,36 @@ function draw() {
   ctx.restore();
 }
 
-function drawBall(x, y, r, hot) {
-  const grd = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
-  grd.addColorStop(0, '#ffffff');
-  grd.addColorStop(1, hot ? '#ff5d73' : '#39c6d6');
-  ctx.shadowColor = hot ? '#ff5d73' : '#7cf5ff'; ctx.shadowBlur = 14;
-  ctx.fillStyle = grd;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  ctx.shadowBlur = 0;
+function drawBall(x, y, r, hot, rot = 0, c = ctx, glow = true) {
+  if (glow) { c.shadowColor = hot ? '#ff5d73' : '#7cf5ff'; c.shadowBlur = 14; }
+  if (!ballSkin) {
+    const grd = c.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+    grd.addColorStop(0, '#ffffff');
+    grd.addColorStop(1, hot ? '#ff5d73' : '#39c6d6');
+    c.fillStyle = grd;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    c.shadowBlur = 0;
+    return;
+  }
+  // custom skin: base circle carries the glow, then the painted texture, then 3D shading
+  c.fillStyle = '#000';
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  c.shadowBlur = 0;
+  c.save();
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.clip();
+  c.translate(x, y); c.rotate(rot);
+  c.drawImage(ballSkin, -r, -r, r * 2, r * 2);
+  c.restore();
+  const sh = c.createRadialGradient(x - r * 0.4, y - r * 0.45, r * 0.05, x, y, r);
+  sh.addColorStop(0, 'rgba(255,255,255,0.55)');
+  sh.addColorStop(0.35, 'rgba(255,255,255,0.08)');
+  sh.addColorStop(0.75, 'rgba(0,0,0,0.05)');
+  sh.addColorStop(1, 'rgba(0,0,0,0.38)');
+  c.fillStyle = sh;
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  if (hot) { c.strokeStyle = '#ff5d73'; c.lineWidth = Math.max(2, r * 0.2); c.beginPath(); c.arc(x, y, r - c.lineWidth / 2, 0, Math.PI * 2); c.stroke(); }
 }
+
 
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
@@ -1020,9 +1450,10 @@ function update(dt) {
     dropCooldown = Math.max(0, dropCooldown - dt);
     const SUB = 6;
     for (let i = 0; i < SUB; i++) stepPhysics(dt / SUB);
-    for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); }
+    for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); igniteCheck(b); emitBallFire(b, dt); }
     checkFloorEnd();
   }
+  if (mode !== 'paused') updateFire(dt);
   if (fl) for (const p of fl.pegs) p.flash = Math.max(0, p.flash - dt * 3);
   for (let i = 0; i < BUCKET_COUNT; i++) bucketFlash[i] = Math.max(0, bucketFlash[i] - dt * 2);
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -1034,6 +1465,7 @@ function update(dt) {
     const t = texts[i]; t.y -= 30 * dt; t.life -= dt;
     if (t.life <= 0) texts.splice(i, 1);
   }
+  for (let i = smackFx.length - 1; i >= 0; i--) { smackFx[i].life -= dt; if (smackFx[i].life <= 0) smackFx.splice(i, 1); }
   shake = Math.max(0, shake - dt * 30);
 }
 
@@ -1042,6 +1474,7 @@ function update(dt) {
 run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore: 0, bestBall: 0, rerolls: 0 };
 startFloor(); mode = 'menu';
 if (player.name) setName(player.name);
+loadSkin(store.get('ballArt', null), drawMenuIcon);
 openMenu();
 if (!player.name) askName(() => showOverlay('ovMenu'));
 fitCanvas();
@@ -1050,6 +1483,12 @@ requestAnimationFrame(frame);
 // debug/test hook
 window.__plinko = {
   get state() { return { mode, run, fl, balls: balls.length }; },
+  get balls() { return balls; },
+  testSmack,
+  get fireCount() { return fire.length; },
+  ignite(m) { const b = balls[balls.length - 1]; if (b) b.mult = m; },
+  erupt(i, tier, m) { startEruption(i, tier, m); },
+  simSwipe(ax, ay, bx, by, ms) { const t = performance.now(); trail = [{ x: ax, y: ay, t: t - ms }, { x: bx, y: by, t }]; swipeCheck({ x: ax, y: ay }, { x: bx, y: by }); },
   simulateFloor(upgrades = {}, floor = 1, seedDrops) {
     run = { floor, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };
     startFloor();
