@@ -1,29 +1,203 @@
-<!DOCTYPE HTML>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>Tony Oneill Github</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-        }
-    </style>
-   
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tony O'Neill :: Games &amp; Projects</title>
+<meta name="description" content="Tony O'Neill's homepage: free browser games Pogey Life, Plinko and Ice Hop, plus other projects.">
+<style>
+  /* ~2006 Web 2.0: fixed-width centered page, glossy gradients, Verdana, rounded boxes, a "beta" badge */
+  * { box-sizing: border-box; }
+  html { background: #2b4f7e; }
+  body {
+    margin: 0; padding: 18px 10px 30px;
+    font: 12px/1.55 Verdana, Tahoma, "DejaVu Sans", Geneva, sans-serif; color: #2a2a2a;
+    background: #2b4f7e linear-gradient(180deg, #8fc1ea 0, #3f78b5 260px, #2b4f7e 520px) no-repeat;
+    min-height: 100vh;
+  }
+  a { color: #1a58b8; } a:hover { color: #e8590c; }
+  #wrap { max-width: 860px; margin: 0 auto; background: #fff; border: 1px solid #1d3b63; border-radius: 10px; box-shadow: 0 0 0 5px #ffffff40, 0 8px 30px #0b1d3666; overflow: hidden; }
+
+  /* header */
+  #top { position: relative; padding: 22px 24px 18px; color: #fff;
+    background: linear-gradient(180deg, #4d8fd6 0%, #2f6fb8 50%, #1f5aa0 51%, #2a6bb3 100%); border-bottom: 1px solid #173f70; }
+  #top::after { content: ""; position: absolute; inset: 0 0 50% 0; background: linear-gradient(#ffffff38, #ffffff08); pointer-events: none; }
+  #logo { margin: 0; font: bold 34px/1 "Trebuchet MS", "Lucida Grande", Verdana, sans-serif; letter-spacing: -1.5px; text-shadow: 0 2px 0 #133a68, 0 0 14px #9fd0ff88; }
+  #logo span { color: #ffd84a; }
+  #logo sup { display: inline-block; vertical-align: top; margin-left: 6px; font: bold 10px Verdana, sans-serif; letter-spacing: 0; color: #fff; padding: 2px 6px; border-radius: 3px; text-shadow: none;
+    background: linear-gradient(#ff8a3d, #e5520e); border: 1px solid #b33f06; transform: rotate(8deg); box-shadow: 0 1px 2px #0005; }
+  #tag { margin: 6px 0 0; font-size: 12px; color: #d8ecff; }
+  #search { position: absolute; right: 20px; top: 26px; z-index: 1; display: flex; gap: 4px; }
+  #search input { width: 150px; font: 11px Verdana, sans-serif; padding: 3px 5px; border: 1px solid #173f70; border-radius: 3px; }
+  #search button { font: bold 11px Verdana, sans-serif; color: #333; padding: 2px 8px; border: 1px solid #7a8899; border-radius: 3px; background: linear-gradient(#fff, #d9dee5); cursor: pointer; }
+
+  /* tabs */
+  #nav { display: flex; flex-wrap: wrap; gap: 3px; padding: 8px 14px 0; margin: 0; list-style: none; background: linear-gradient(#e9f1fa, #cfdff0); border-bottom: 4px solid #f7931e; }
+  #nav a { display: block; padding: 6px 14px 5px; font-weight: bold; font-size: 11px; color: #24456d; text-decoration: none; border: 1px solid #a8bdd6; border-bottom: 0; border-radius: 6px 6px 0 0; background: linear-gradient(#ffffff, #dbe7f3); }
+  #nav a:hover { background: linear-gradient(#fff8e0, #ffe39a); color: #7a3b00; }
+  #nav a.on { color: #fff; border-color: #d0730d; background: linear-gradient(#ffb74d, #f7931e); text-shadow: 0 1px 0 #b55f00; }
+
+  /* layout */
+  #cols { display: flex; gap: 18px; padding: 18px; }
+  #main { flex: 1; min-width: 0; }
+  #side { width: 220px; flex-shrink: 0; }
+  h2 { margin: 0 0 10px; font: bold 17px "Trebuchet MS", Verdana, sans-serif; color: #1f5aa0; border-bottom: 1px dotted #9db8d6; padding-bottom: 4px; }
+  h2 small { font: normal 11px Verdana, sans-serif; color: #888; }
+
+  #welcome { display: flex; gap: 12px; align-items: center; padding: 10px 12px; margin-bottom: 18px; border: 1px solid #f0d77a; border-radius: 6px; background: linear-gradient(#fffbe6, #fff3c2); }
+  #welcome b.big { font-size: 26px; line-height: 1; }
+  #welcome p { margin: 0; }
+
+  /* game boxes */
+  .game { display: flex; gap: 14px; padding: 12px; margin-bottom: 14px; border: 1px solid #c3d4e8; border-radius: 8px; background: linear-gradient(#ffffff, #eef4fb); }
+  .game:hover { border-color: #f7931e; box-shadow: 0 0 0 3px #f7931e22; }
+  .thumb { position: relative; width: 120px; height: 90px; flex-shrink: 0; border-radius: 6px; border: 1px solid #00000040; display: grid; place-items: center; font-size: 46px; overflow: hidden; text-decoration: none; box-shadow: inset 0 0 0 1px #ffffff55, 0 2px 4px #0003; }
+  .thumb::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 48%; background: linear-gradient(#ffffff70, #ffffff10); border-radius: 0 0 50% 50% / 0 0 18px 18px; }
+  .t-pogey { background: linear-gradient(135deg, #7d5bd6, #3b2a7a); }
+  .t-plinko { background: linear-gradient(135deg, #ff6aa8, #b5176a); }
+  .t-ice { background: linear-gradient(135deg, #9fe0ff, #2a7cc4); }
+  .game h3 { margin: 0 0 3px; font: bold 15px "Trebuchet MS", Verdana, sans-serif; }
+  .game h3 a { text-decoration: none; color: #1f5aa0; } .game h3 a:hover { text-decoration: underline; color: #e8590c; }
+  .badge { display: inline-block; vertical-align: 2px; margin-left: 4px; font: bold 9px Verdana, sans-serif; padding: 1px 5px; border-radius: 3px; color: #fff; text-transform: uppercase; }
+  .b-new { background: linear-gradient(#ff6b6b, #d42525); } .b-hot { background: linear-gradient(#ffb03b, #e5711d); } .b-beta { background: linear-gradient(#7cc76b, #3d9a2b); }
+  .game p { margin: 0 0 6px; }
+  .meta { font-size: 10px; color: #777; margin-bottom: 7px; }
+  .stars { color: #f5a623; letter-spacing: 1px; }
+  .play { display: inline-block; font: bold 12px Verdana, sans-serif; color: #fff; text-decoration: none; padding: 5px 16px; border-radius: 14px; border: 1px solid #2f7d14; text-shadow: 0 -1px 0 #2a6a12;
+    background: linear-gradient(180deg, #a6e27a 0%, #6cc23a 50%, #55ad24 51%, #6cc23a 100%); box-shadow: 0 1px 2px #0003; }
+  .play:hover { color: #fff; background: linear-gradient(180deg, #ffd27a 0%, #f7a21e 50%, #ea8a05 51%, #f7a21e 100%); border-color: #b86a00; text-shadow: 0 -1px 0 #9a5600; }
+  .alt { font-size: 11px; margin-left: 8px; }
+
+  /* sidebar */
+  .box { border: 1px solid #c3d4e8; border-radius: 6px; margin-bottom: 14px; overflow: hidden; background: #f7fafd; }
+  .box h4 { margin: 0; padding: 5px 9px; font: bold 11px Verdana, sans-serif; color: #fff; text-shadow: 0 1px 0 #173f70; background: linear-gradient(#5d9ad9, #2f6fb8); }
+  .box .in { padding: 8px 10px; font-size: 11px; }
+  .box ul { margin: 0; padding: 0 0 0 16px; } .box li { margin: 3px 0; }
+  .news dt { font-weight: bold; color: #e8590c; font-size: 10px; } .news dd { margin: 0 0 7px; }
+  #counter { display: inline-flex; gap: 1px; padding: 2px; background: #000; border: 1px solid #555; border-radius: 2px; }
+  #counter i { font: bold 13px "Courier New", monospace; font-style: normal; color: #6fff6f; background: #111; padding: 0 3px; text-shadow: 0 0 4px #3f3; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .b88 { width: 88px; height: 31px; display: grid; place-items: center; text-align: center; font: bold 9px/1.1 Verdana, sans-serif; border: 1px solid #000; text-decoration: none; }
+  .b88.a { background: linear-gradient(#fff, #ccc); color: #333; } .b88.b { background: linear-gradient(#ff9e2c, #c65400); color: #fff; } .b88.c { background: linear-gradient(#3a3a3a, #000); color: #7fff7f; } .b88.d { background: linear-gradient(#5aa0ff, #1b4fa8); color: #fff; }
+
+  #foot { text-align: center; font-size: 10px; color: #667; padding: 12px; border-top: 1px solid #dde6f0; background: linear-gradient(#f4f8fc, #e4ecf5); }
+  #foot a { color: #446; }
+  #sub { text-align: center; color: #cfe2f7; font-size: 10px; margin-top: 10px; }
+
+  @media (max-width: 700px) {
+    #cols { flex-direction: column; padding: 14px; } #side { width: auto; }
+    #search { display: none; } #logo { font-size: 27px; }
+    .game { flex-direction: column; } .thumb { width: 100%; height: 80px; }
+  }
+</style>
 </head>
-
 <body>
-<p>Welcome to my website. Below you can check out the different projects
- I have on the go as well as anything else I want to share. </p>
- 
- 
-  <p><a href="Michael H. Bruce/mhb Insurance/index.html">-MHB Insurance</a></p>
- <p><a href="/Harrigan/index.html">-Harrigan Insurance-</a></p>
- <p><a href="/FlappyTime/index.html">Flappy Bird Clone HTML5 Game</a></p>
- <p><a href="/Plinko/index.html">Plinko Roguelite HTML5 Game</a></p>
- <p><a href="/Learning/day1.html">HTML 5 - App Learning - Day 1</a></p>
-    
- 
- 
-</body>
+<div id="wrap">
+  <div id="top">
+    <h1 id="logo">Tony <span>O'Neill</span><sup>beta!</sup></h1>
+    <p id="tag">Free browser games &amp; other stuff I'm building. No downloads, no sign-up.</p>
+    <form id="search" onsubmit="go(event)"><input id="q" type="text" placeholder="Search this site..." aria-label="Search this site"><button>Go</button></form>
+  </div>
+  <ul id="nav">
+    <li><a class="on" href="./">Home</a></li>
+    <li><a href="NEETLIFE/index.html">Pogey Life</a></li>
+    <li><a href="Plinko/index.html">Plinko</a></li>
+    <li><a href="IceHop/index.html">Ice Hop</a></li>
+    <li><a href="#other">Other projects</a></li>
+  </ul>
 
+  <div id="cols">
+    <div id="main">
+      <div id="welcome"><b class="big">👋</b><p><b>Welcome!</b> This is where I put the games and projects I've got on the go. Everything runs right in your browser. Pick something below and have fun!</p></div>
+
+      <h2>My Games <small>(3 games and counting)</small></h2>
+
+      <div class="game">
+        <a class="thumb t-pogey" href="NEETLIFE/index.html" aria-hidden="true" tabindex="-1">🏠</a>
+        <div>
+          <h3><a href="NEETLIFE/index.html">Pogey Life</a><span class="badge b-new">New!</span></h3>
+          <div class="meta">3D life sim · <span class="stars">★★★★★</span> · Updated Oct 2026</div>
+          <p>Live in a tiny apartment, pay your bills, cook, decorate, gamble at the online casino, trade crypto and build mining rigs. Try not to get evicted.</p>
+          <a class="play" href="NEETLIFE/index.html">▶ Play now</a>
+        </div>
+      </div>
+
+      <div class="game">
+        <a class="thumb t-plinko" href="Plinko/index.html" aria-hidden="true" tabindex="-1">🎯</a>
+        <div>
+          <h3><a href="Plinko/index.html">Plinko</a><span class="badge b-hot">Hot</span></h3>
+          <div class="meta">Roguelite arcade · <span class="stars">★★★★☆</span></div>
+          <p>Drop balls, hit the multipliers, buy upgrades between levels and see how far your run goes. Cash out before it's too late.</p>
+          <a class="play" href="Plinko/index.html">▶ Play now</a><a class="alt" href="Plinko/guide.html">How to play &raquo;</a>
+        </div>
+      </div>
+
+      <div class="game">
+        <a class="thumb t-ice" href="IceHop/index.html" aria-hidden="true" tabindex="-1">🐧</a>
+        <div>
+          <h3><a href="IceHop/index.html">Ice Hop</a><span class="badge b-beta">Beta</span></h3>
+          <div class="meta">Push-your-luck · <span class="stars">★★★★☆</span></div>
+          <p>Hop your penguin from floe to floe for bigger and bigger multipliers. Every jump could be the one that cracks. Play money only.</p>
+          <a class="play" href="IceHop/index.html">▶ Play now</a>
+        </div>
+      </div>
+
+      <h2 id="other" style="margin-top:22px">Other Projects</h2>
+      <ul>
+        <li><a href="Michael H. Bruce/mhb Insurance/index.html">MHB Insurance</a> (website)</li>
+        <li><a href="Harrigan/index.html">Harrigan Insurance</a> (website)</li>
+        <li><a href="FlappyTime/index.html">Flappy Bird clone</a> (HTML5 game)</li>
+        <li><a href="Learning/day1.html">HTML5 app learning: Day 1</a></li>
+      </ul>
+    </div>
+
+    <div id="side">
+      <div class="box"><h4>:: Latest News</h4><div class="in"><dl class="news">
+        <dt>OCT 2026</dt><dd>Crypto mining comes to <a href="NEETLIFE/index.html">Pogey Life</a>! Build rigs and watch the power bill.</dd>
+        <dt>OCT 2026</dt><dd><a href="IceHop/index.html">Ice Hop</a> can now be played on its own.</dd>
+        <dt>OCT 2026</dt><dd>Custom bets (up to $500) in all the casino games.</dd>
+      </dl></div></div>
+      <div class="box"><h4>:: Quick Links</h4><div class="in"><ul>
+        <li><a href="NEETLIFE/index.html">Pogey Life</a></li>
+        <li><a href="Plinko/index.html">Plinko</a></li>
+        <li><a href="IceHop/index.html">Ice Hop</a></li>
+        <li><a href="https://github.com/TonyHxC">My GitHub</a></li>
+      </ul></div></div>
+      <div class="box"><h4>:: Visitors</h4><div class="in" style="text-align:center">
+        <div id="counter" title="Your visits to this page"></div>
+        <div style="margin-top:4px;color:#888;font-size:10px">your visits (counted in this browser)</div>
+        <div class="buttons">
+          <span class="b88 a">Valid<br>HTML5</span><span class="b88 b">Hand<br>coded!</span><span class="b88 c">&gt;_ Powered<br>by JS</span><span class="b88 d">Best viewed<br>at 1024×768</span>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <div id="foot">&copy; <span id="yr">2026</span> Tony O'Neill · <a href="#top">Back to top</a> · <a href="https://github.com/TonyHxC">GitHub</a><br>Games use play money only. Nothing here costs real money.</div>
+</div>
+<div id="sub">Hosted on GitHub Pages · Last updated October 2026</div>
+
+<script>
+  // retro hit counter: your own visit count, kept in this browser
+  (function () {
+    var n = 1;
+    try { n = (parseInt(localStorage.getItem('tonyVisits'), 10) || 0) + 1; localStorage.setItem('tonyVisits', n); } catch (e) {}
+    var s = ('000000' + n).slice(-6), h = '';
+    for (var i = 0; i < s.length; i++) h += '<i>' + s[i] + '</i>';
+    document.getElementById('counter').innerHTML = h;
+    document.getElementById('yr').textContent = new Date().getFullYear();
+  })();
+  // tiny site search: jumps to the first game or project whose text matches
+  function go(e) {
+    e.preventDefault();
+    var q = document.getElementById('q').value.trim().toLowerCase(); if (!q) return;
+    var links = document.querySelectorAll('#main h3 a, #other + ul a');
+    for (var i = 0; i < links.length; i++) {
+      var box = links[i].closest('.game') || links[i].parentNode;
+      if (box.textContent.toLowerCase().indexOf(q) >= 0) { location.href = links[i].href; return; }
+    }
+    alert('Nothing found for "' + q + '"');
+  }
+</script>
+</body>
 </html>
