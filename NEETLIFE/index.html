@@ -54,6 +54,9 @@
   /* PC */
   #pc { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #000d; z-index: 20; }
   #pc.show { display: flex; }
+  #scPause, #scSettings { z-index: 30; } /* the menu opens on top of the PC too */
+  #btnLogoff { background: #c43a3a; border-color: #ff6b6b66; color: #fff; }
+  #btnLogoff:hover { background: #d94848; }
   .monitor { width: 75vw; height: 75vh; flex: none; background: #111; border-radius: 18px; padding: 14px; box-shadow: 0 0 0 2px #2a2a2a, 0 30px 80px #000; display: flex; }
   .screen-area { position: relative; flex: 1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
     background: radial-gradient(ellipse at 30% 20%, #2c4a7a 0%, #172440 45%, #0c1222 100%); }
@@ -91,6 +94,17 @@
   .bets button.on { background: #24223a; color: #ffcf5a; }
   .bets button:disabled { opacity: .3; cursor: not-allowed; }
   .casino { max-width: 640px; margin: 0 auto; }
+  .lobby { max-width: 760px; margin: 0 auto; }
+  .lobby-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+  .lobby-head .bal { font-weight: 800; color: #1b8a4a; }
+  .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; margin-top: 12px; }
+  .game { border-radius: 14px; padding: 16px; color: #fff; display: flex; flex-direction: column; gap: 6px; min-height: 170px; cursor: pointer; border: 0; text-align: left; font: inherit; box-shadow: 0 6px 18px #0003; transition: transform .1s; }
+  .game:hover:not(:disabled) { transform: translateY(-2px); }
+  .game:disabled { cursor: not-allowed; filter: grayscale(.7); opacity: .6; }
+  .game .gi { font-size: 40px; line-height: 1; } .game .gn { font-size: 19px; font-weight: 900; } .game .gd { font-size: 13px; opacity: .9; flex: 1; }
+  .game .gt { font-size: 11px; font-weight: 900; letter-spacing: .6px; text-transform: uppercase; background: #0004; border-radius: 99px; padding: 3px 9px; align-self: flex-start; }
+  .lobby-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: #55536a; } .lobby-stats b { color: #1b1a22; }
+  .back { font: inherit; font-size: 13px; font-weight: 800; background: none; border: 0; color: #55536a; cursor: pointer; padding: 0; margin-bottom: 8px; }
   .ladder { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 10px 0; }
   .rung { background: #fff; border: 1px solid #ddd9cf; border-radius: 8px; padding: 6px; text-align: center; font-size: 12px; color: #7a7790; }
   .rung b { display: block; color: #1b1a22; font-size: 15px; }
@@ -151,18 +165,18 @@
 <!-- PC -->
 <div id="pc"><div class="monitor"><div class="screen-area">
   <div class="desk" id="desk">
-    <div class="icon" data-app="casino"><div class="ico" style="background:linear-gradient(135deg,#b98cff,#7cf5ff)">◉</div>Plinko Casino</div>
+    <div class="icon" data-app="casino"><div class="ico" style="background:linear-gradient(135deg,#b98cff,#7cf5ff)">🎰</div>Casino</div>
     <div class="icon" data-app="bank"><div class="ico" style="background:linear-gradient(135deg,#6fe39a,#2a9d5c)">$</div>NeetBank</div>
     <div class="icon" data-app="bills"><div class="ico" style="background:linear-gradient(135deg,#ffcf5a,#e0892a)">✉</div>Bills</div>
-    <div class="icon" id="iconLogoff"><div class="ico" style="background:linear-gradient(135deg,#555,#222)">⏻</div>Log off</div>
+    <div class="icon" id="iconLogoff"><div class="ico" style="background:linear-gradient(135deg,#555,#222)">⏻</div>Leave PC</div>
   </div>
 
   <div class="win" id="winCasino">
-    <div class="bar">◉ Plinko Casino <button class="x" data-close>✕</button></div>
+    <div class="bar">🎰 NeetCasino <button class="x" data-close>✕</button></div>
     <div class="body" id="casinoBody"></div>
   </div>
   <div class="win dark" id="winTable">
-    <div class="bar">◉ Plinko Casino · <span id="tableBet"></span> <button class="wbtn" id="btnForfeit" style="margin-left:auto;background:#ff5f57">Leave table</button></div>
+    <div class="bar">🎰 NeetCasino · Plinko · <span id="tableBet"></span> <button class="wbtn" id="btnForfeit" style="margin-left:auto;background:#ff5f57">Leave table</button></div>
     <div class="body" style="display:flex;flex-direction:column;position:relative">
       <iframe id="plinkoFrame" title="Plinko"></iframe>
       <div class="result" id="result"><div class="rbox" id="resultBox"></div></div>
@@ -179,13 +193,13 @@
 
   <div class="taskbar">
     <span class="start">NeetOS</span>
-    <button data-app="casino">◉ Casino</button>
+    <button data-app="casino">🎰 Casino</button>
     <button data-app="bank">$ Bank</button>
     <button data-app="bills">✉ Bills</button>
     <span id="tbClock"></span>
     <span class="sp"></span>
     <span class="money" id="tbMoney"></span>
-    <button id="btnLogoff">Log off</button>
+    <button id="btnLogoff" title="Get up from the computer">⏻ Leave PC</button>
   </div>
 </div></div></div>
 
@@ -196,5 +210,6 @@
 <script src="character.js"></script>
 <script src="shop.js"></script>
 <script src="crypto.js"></script>
+<script src="duel.js"></script>
 </body>
 </html>

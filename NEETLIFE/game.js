@@ -580,10 +580,31 @@ document.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyE' && active() && hovered) interact(hovered.id);
   if (active()) for (const fn of hooks.key) fn(e.code);
-  if (e.code === 'Escape' && !locked && active()) { paused = true; showScreen('scPause'); }
+  if (e.code === 'Escape') { if (handleEsc()) e.preventDefault(); }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && active()) e.preventDefault();
-  if (e.code === 'Escape' && pcOpen) { e.preventDefault(); closePC(); }
 });
+// ESC: menu closed -> open it (walking or on the PC). Menu open -> close it and go back to what you were doing.
+// It never logs you off the PC; that's the "Leave PC" button on the PC itself.
+let lockLostAt = 0;
+function menuUp() { return ['scPause', 'scSettings'].some(id => { const el = $(id); return el && el.classList.contains('show'); }); }
+function handleEsc() {
+  if (!started || !S || S.evicted || sleeping || modalOpen) return false;
+  if (locked) return false;                                  // the browser drops pointer lock itself; pointerlockchange opens the menu
+  if (performance.now() - lockLostAt < 250) return false;    // same ESC press that just released the mouse (Firefox sends both)
+  if (menuUp()) resumeGame(); else pauseGame();
+  return true;
+}
+function pauseGame() {
+  paused = true; showScreen('scPause');
+  plinkoMsg('neetPause');
+  if (locked) document.exitPointerLock && document.exitPointerLock();
+}
+function resumeGame() {
+  plinkoMsg('neetResume');
+  if (pcOpen) { paused = false; showScreen(null); return; } // back to the PC screen, mouse stays free
+  lockPointer(true);
+}
+function plinkoMsg(type) { try { if (atTable) $('plinkoFrame').contentWindow.postMessage({ src: 'neetlife', type }, '*'); } catch (e) {} }
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 canvas.addEventListener('mousedown', e => { if (!locked && active()) { dragging = true; dragMoved = 0; } });
 window.addEventListener('mouseup', () => { dragging = false; });
@@ -601,21 +622,30 @@ canvas.addEventListener('click', () => {
   if (!locked && dragMoved > 6) return; // that was a look-drag, not a click
   if (hovered && active()) interact(hovered.id);
 });
-function lockPointer() {
+let softUntil = 0, softToasted = false;
+function lockPointer(soft) {
   paused = false; showScreen(null);
   if (lockFailed || !canvas.requestPointerLock) { useFallback(); return; }
-  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(useFallback); } catch (e) { useFallback(); }
+  softUntil = soft ? performance.now() + 1500 : 0; softToasted = false;
+  try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(lockError); } catch (e) { lockError(); }
+}
+// A "soft" lock (resuming from the menu) can be refused for ~1s after ESC released the mouse.
+// Then we just carry on unlocked and the next click on the game captures the mouse again.
+function lockError() {
+  if (performance.now() < softUntil) { if (!softToasted && !locked) toast('Click to look around.', '', 2500); softToasted = true; return; }
+  useFallback();
 }
 function useFallback() {
   if (!lockFailed) toast('Mouse capture isn\'t available here, so hold the mouse button and drag to look around. WASD still moves.', '', 7000);
   lockFailed = true; paused = false; showScreen(null);
   $('crosshair').style.display = '';
 }
-document.addEventListener('pointerlockerror', useFallback);
+document.addEventListener('pointerlockerror', lockError);
 document.addEventListener('pointerlockchange', () => {
+  const was = locked;
   locked = document.pointerLockElement === canvas;
-  if (locked) { paused = false; showScreen(null); }
-  else if (started && !pcOpen && !modalOpen && !sleeping && !S.evicted && !lockFailed) { paused = true; showScreen('scPause'); }
+  if (locked) { softUntil = 0; paused = false; showScreen(null); }
+  else if (was && started && !pcOpen && !modalOpen && !sleeping && !S.evicted && !lockFailed && !menuUp()) { lockLostAt = performance.now(); pauseGame(); }
   $('crosshair').style.display = locked || lockFailed ? '' : 'none';
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && started && !pcOpen) { paused = true; } });
@@ -830,7 +860,7 @@ function openPC() {
   hideWins(); updateHUD(); pcSizer.place();
 }
 function closePC(force) {
-  if (atTable && !force) { confirmLeaveTable(); return; }
+  if (atTable && !force) { confirmLeaveTable(true); return; }
   if (atTable) endTable();
   pcOpen = false; $('pc').classList.remove('show');
   if (!force && started && !S.evicted) lockPointer();
@@ -840,7 +870,7 @@ function openWin(id) { hideWins(); $(id).classList.add('show'); }
 for (const ic of document.querySelectorAll('.icon[data-app], .taskbar [data-app]')) ic.onclick = () => {
   if (atTable) { confirmLeaveTable(); return; }
   const a = ic.dataset.app;
-  if (a === 'casino') { renderCasino(); openWin('winCasino'); }
+  if (a === 'casino') { casinoView = 'lobby'; renderCasino(); openWin('winCasino'); }
   if (a === 'bank') { renderBank(); openWin('winBank'); }
   if (a === 'bills') { renderBills(); openWin('winBills'); }
 };
@@ -868,6 +898,14 @@ function renderBills() {
 }
 const cashMult = n => n <= 0 ? 0 : n < CASH_TABLE.length ? CASH_TABLE[n] : CASH_TABLE[CASH_TABLE.length - 1] * Math.pow(1.25, n - CASH_TABLE.length + 1);
 let chosenBet = 25;
+// ---- NeetCasino: a lobby of games. Plinko is the first; more can be added with NEET.casinoAddGame ----
+let casinoView = 'lobby';
+const CASINO_GAMES = [
+  { id: 'plinko', icon: '◉', name: 'Plinko', desc: 'Roguelite Plinko. Bet, clear floors, cash out before you bust.', grad: 'linear-gradient(135deg,#7b5cff,#2fc4d6)', render: renderPlinkoBet },
+  { id: 'blackjack', icon: '🂡', name: 'Blackjack', desc: 'Beat the dealer to 21.', grad: 'linear-gradient(135deg,#1f7a4c,#0f3d27)', soon: true },
+  { id: 'slots', icon: '🎰', name: 'Slots', desc: 'Pull the lever. Lose money with style.', grad: 'linear-gradient(135deg,#ff5f9e,#ff9a3c)', soon: true },
+  { id: 'roulette', icon: '🎡', name: 'Roulette', desc: 'Red or black? Let it ride.', grad: 'linear-gradient(135deg,#b3202f,#1b1a22)', soon: true },
+];
 function renderCasino() {
   const body = $('casinoBody');
   if (!internetOn()) {
@@ -875,8 +913,20 @@ function renderCasino() {
     $('goBills').onclick = () => { renderBills(); openWin('winBills'); };
     return;
   }
+  const g = CASINO_GAMES.find(x => x.id === casinoView && !x.soon);
+  if (g) return g.render(body);
+  casinoView = 'lobby';
+  const st = S.stats;
+  body.innerHTML = `<div class="lobby"><div class="lobby-head"><h3>NeetCasino 🎰</h3><span class="bal">Balance ${money(S.money)}</span></div>
+    <p>Pick a game. Please gamble irresponsibly (it's a video game).</p>
+    <div class="games">${CASINO_GAMES.map(x => `<button class="game" data-game="${x.id}" style="background:${x.grad}" ${x.soon ? 'disabled' : ''}>
+      <span class="gi">${x.icon}</span><span class="gn">${x.name}</span><span class="gd">${x.desc}</span><span class="gt">${x.soon ? 'Coming soon' : 'Play'}</span></button>`).join('')}</div>
+    <div class="lobby-stats"><span>Plinko runs <b>${st.runs}</b></span><span>Cashed out <b>${st.wins}</b></span><span>Busted <b>${st.busts}</b></span><span>Wagered <b>${money(st.wagered)}</b></span><span>Won <b>${money(st.won)}</b></span></div></div>`;
+  for (const b of body.querySelectorAll('[data-game]')) b.onclick = () => { casinoView = b.dataset.game; renderCasino(); };
+}
+function renderPlinkoBet(body) {
   if (chosenBet > S.money) chosenBet = BETS.filter(b => b <= S.money).pop() || BETS[0];
-  body.innerHTML = `<div class="casino"><h3>Plinko Casino</h3>
+  body.innerHTML = `<div class="casino"><button class="back" id="btnLobby">← All games</button><h3>◉ Plinko</h3>
     <p>Place a bet and play a run. After each floor you clear you can <b>cash out</b> at the multiplier below, or pick an upgrade and push on. Bust before cashing out and the house keeps your bet.</p>
     <div class="bets">${BETS.map(b => `<button data-bet="${b}" class="${b === chosenBet ? 'on' : ''}" ${b > S.money ? 'disabled' : ''}>$${b}</button>`).join('')}</div>
     <div class="ladder">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<div class="rung">Floor ${n}${n % 5 === 0 ? ' ☠' : ''}<b>×${cashMult(n)}</b>${money(chosenBet * cashMult(n))}</div>`).join('')}</div>
@@ -885,6 +935,7 @@ function renderCasino() {
     ${S.money < BETS[0] ? '<p class="neg">You can\'t afford the minimum bet.</p>' : ''}</div>`;
   for (const b of body.querySelectorAll('[data-bet]')) b.onclick = () => { chosenBet = +b.dataset.bet; renderCasino(); };
   $('btnPlaceBet').onclick = () => startTable(chosenBet);
+  $('btnLobby').onclick = () => { casinoView = 'lobby'; renderCasino(); };
 }
 function startTable(bet) {
   if (S.money < bet || !internetOn()) return;
@@ -911,6 +962,7 @@ window.addEventListener('message', e => {
   const d = e.data || {};
   if (d.src !== 'plinko') return;
   if (d.type === 'neetReady') { frameReady = true; sendStart(); }
+  if (d.type === 'neetEsc') handleEsc();
   if (d.type === 'neetCashOut' && atTable) {
     const win = Math.round(tableBet * cashMult(d.cleared));
     addMoney(win, `Plinko cash-out (floor ${d.cleared})`);
@@ -933,16 +985,20 @@ function showResult(won, amt, cleared) {
   $('result').classList.add('show');
   $('btnAgain').onclick = () => { $('result').classList.remove('show'); renderCasino(); openWin('winCasino'); };
 }
-function confirmLeaveTable() {
+function forfeitTable() {
+  S.stats.busts++; endTable(); save();
+  $('result').classList.remove('show');
+  $('plinkoFrame').src = '../Plinko/index.html?neet=1'; frameReady = false; // reset the table
+}
+function confirmLeaveTable(thenLeavePC) {
   $('resultBox').innerHTML = `<h3>Leave the table?</h3><p>Walking away mid-run forfeits your ${money(tableBet)} bet.</p>
-    <button class="wbtn" id="btnStay">Keep playing</button> <button class="wbtn" id="btnLeave" style="background:#c43a3a">Leave</button>`;
+    <button class="wbtn" id="btnStay">Keep playing</button> <button class="wbtn" id="btnLeave" style="background:#c43a3a">${thenLeavePC ? 'Leave PC' : 'Leave'}</button>`;
   $('result').classList.add('show');
   $('btnStay').onclick = () => $('result').classList.remove('show');
   $('btnLeave').onclick = () => {
-    S.stats.busts++; endTable(); save();
-    $('result').classList.remove('show');
-    $('plinkoFrame').src = '../Plinko/index.html?neet=1'; frameReady = false; // reset the table
+    forfeitTable();
     renderCasino(); openWin('winCasino');
+    if (thenLeavePC) closePC();
   };
 }
 $('btnForfeit').onclick = () => { if (atTable) confirmLeaveTable(); else { renderCasino(); openWin('winCasino'); } };
@@ -969,8 +1025,11 @@ function begin(saved) {
   lockPointer();
   if (!saved) setTimeout(() => toast('Your PC is on the desk. Rent is due Sunday.', '', 6000), 600);
 }
-$('btnResume').onclick = () => lockPointer();
-$('btnQuitTitle').onclick = () => { save(); started = false; paused = true; renderTitle(); showScreen('scTitle'); };
+$('btnResume').onclick = () => resumeGame();
+$('btnQuitTitle').onclick = () => {
+  if (pcOpen) { if (atTable) forfeitTable(); closePC(true); }
+  save(); started = false; paused = true; renderTitle(); showScreen('scTitle');
+};
 $('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} newLife(); };
 
 let last = performance.now(), saveTimer = 0;
@@ -1084,6 +1143,9 @@ function openSettings(from) { settingsBack = from; renderSettings(); showScreen(
 window.NEET = {
   hooks, box, prism, quad, thing, things, env, MIRROR, BATH, walkable, settings, begin, showScreen, renderTitle, lockPointer,
   get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC, internetOn, clockStr, dayOf,
+  casinoLobby() { casinoView = 'lobby'; renderCasino(); },
+  get casinoView() { return casinoView; },
+  casinoAddGame(g) { CASINO_GAMES.splice(CASINO_GAMES.findIndex(x => x.soon), 0, g); }, // {id, icon, name, desc, grad, render(body)}
   solids, ROOM, withXF, intoGeometry, setFurniture, advance, closePC, openPC, get hovered() { return hovered; }, get locked() { return locked; },
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },

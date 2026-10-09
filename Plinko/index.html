@@ -1195,6 +1195,9 @@ if (NEET) {
       $('neetCashRow').style.display = 'none';
     }
     if (d.type === 'neetMute') { muted = !!d.muted; updateMuteLabel(); }
+    // NEETLIFE pause menu opened/closed over the table: freeze the run without showing our own menu
+    if (d.type === 'neetPause' && (mode === 'play' || mode === 'reward')) { paused = { mode, overlay: mode === 'reward' ? 'ovReward' : fl && fl.choice ? 'ovGoal' : null }; mode = 'paused'; }
+    if (d.type === 'neetResume' && mode === 'paused') resumeRun();
   });
 }
 $('menuBtn').onclick = () => { if (NEET) return; if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
@@ -1348,7 +1351,7 @@ const keys = {};
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   keys[e.key] = true;
-  if (e.key === 'Escape' && NEET) return;
+  if (e.key === 'Escape' && NEET) { neetPost({ type: 'neetEsc' }); return; } // NEETLIFE's pause menu handles it
   if (e.key === 'Escape') { if (mode === 'paused') resumeRun(); else if (mode === 'play' || mode === 'reward') openMenu(); return; }
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
 });
