@@ -1,8 +1,9 @@
 // Pogey Life — the TV plays YouTube. Press E on the TV for the remote: power, channels, add your own links, volume.
 // The player is a normal YouTube embed laid over the 3D screen with a CSS perspective transform, so it sits on the
 // TV as you walk around. It gets quieter the further away you are and pauses when the game is paused.
-// Note: YouTube refuses to play inside a page opened straight from disk (file://). Run it from the website or a
-// local server (e.g. `npx serve` in the repo folder).
+// Note: YouTube refuses to play inside a page opened straight from disk (file://): the browser sends no Referer and
+// YouTube answers with "Error 153". Play from the website, or double-click NEETLIFE/play-local.bat to run a little
+// local server. On file:// the TV shows a message saying so instead of YouTube's error.
 (() => {
 'use strict';
 const N = window.POGEY;
@@ -45,7 +46,7 @@ function parseYT(raw) {
 }
 function embedSrc(v) {
   const q = new URLSearchParams({ autoplay: 1, controls: 0, rel: 0, playsinline: 1, enablejsapi: 1, iv_load_policy: 3, disablekb: 1, fs: 0, modestbranding: 1 });
-  if (/^https?:$/.test(location.protocol)) q.set('origin', location.origin);
+  if (/^https?:$/.test(location.protocol)) { q.set('origin', location.origin); q.set('widget_referrer', location.href.split('#')[0]); }
   if (v.list) q.set('list', v.list); else q.set('loop', 1), q.set('playlist', v.id);
   if (v.start) q.set('start', v.start);
   return `https://www.youtube.com/embed/${v.id || 'videoseries'}?${q}`;
@@ -76,6 +77,12 @@ function setSource(src) {
   if (frame) { frame.remove(); frame = null; }
   lastVol = -1; lastPlay = null;
   if (!src) return;
+  if (location.protocol === 'file:') { // YouTube would only show "Error 153" here: say what's actually wrong
+    frame = document.createElement('div');
+    frame.style.cssText = 'width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:60px;box-sizing:border-box;background:#101018;color:#fff;font:700 34px system-ui,sans-serif';
+    frame.innerHTML = '<div style="font-size:80px">📡</div><div>YouTube can\'t play when the game is opened as a file.</div><div style="font-size:26px;color:#aab;font-weight:600">Double-click <b style="color:#ffcf5a">play-local.bat</b> in the NEETLIFE folder, or play on the website.</div>';
+    wrap.appendChild(frame); return;
+  }
   frame = document.createElement('iframe');
   frame.width = IW; frame.height = IH; frame.title = 'TV';
   frame.allow = 'autoplay; encrypted-media; picture-in-picture';
@@ -85,7 +92,7 @@ function setSource(src) {
   frame.onload = () => { lastVol = -1; lastPlay = null; };
   wrap.appendChild(frame);
 }
-function cmd(func, args = []) { try { frame && frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch (e) {} }
+function cmd(func, args = []) { try { frame && frame.contentWindow && frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch (e) {} }
 
 // projective transform that maps the IW x IH box onto 4 screen points (tl, tr, br, bl)
 const adj = m => [m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4], m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5], m[3] * m[7] - m[4] * m[6], m[1] * m[6] - m[0] * m[7], m[0] * m[4] - m[1] * m[3]];
@@ -200,7 +207,7 @@ let open = false;
 function render() {
   const f = F(), all = channels(), cur = current();
   el.innerHTML = `<div class="top"><h3>📺 TV remote</h3><button class="pw ${f.tvOn ? 'on' : ''}" data-act="power">${f.tvOn ? '⏻ On' : '⏻ Off'}</button></div>
-    ${location.protocol === 'file:' ? '<div class="warn">YouTube won\'t play when the game is opened as a file. Play it from the website, or run a local server.</div>' : ''}
+    ${location.protocol === 'file:' ? '<div class="warn">YouTube won\'t play when the game is opened as a file (that\'s the "Error 153"). Double-click <b>play-local.bat</b> in the NEETLIFE folder to start the game from a local server, or play on the website.</div>' : ''}
     <div class="lbl">Channels</div>
     ${all.length ? `<div class="chs">${all.map((c, i) => `<div class="ch ${cur && cur.url === c.url ? 'on' : ''}" data-ch="${i}">
         <span class="num">${String(i + 1).padStart(2, '0')}</span><span class="n" title="${esc(c.url)}">${esc(c.name)}</span>
