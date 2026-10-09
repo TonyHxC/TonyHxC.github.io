@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quake Gaming Nation :: Free Browser Games</title>
-<meta name="description" content="Quake Gaming Nation: free browser games Pogey Life, Plinko and Ice Hop, plus other projects.">
+<meta name="description" content="Quake Gaming Nation: free browser games Pogey Life, Plinko and Ice Hop.">
 <style>
   /* ~2006 Web 2.0: fixed-width centered page, glossy gradients, Verdana, rounded boxes, a "beta" badge */
   * { box-sizing: border-box; }
@@ -103,12 +103,11 @@
     <li><a href="NEETLIFE/index.html">Pogey Life</a></li>
     <li><a href="Plinko/index.html">Plinko</a></li>
     <li><a href="IceHop/index.html">Ice Hop</a></li>
-    <li><a href="#other">Other projects</a></li>
   </ul>
 
   <div id="cols">
     <div id="main">
-      <div id="welcome"><b class="big">👋</b><p><b>Welcome!</b> This is where I put the games and projects I've got on the go. Everything runs right in your browser. Pick something below and have fun!</p></div>
+      <div id="welcome"><b class="big">👋</b><p><b>Welcome!</b> This is where I put the games I've got on the go. Everything runs right in your browser. Pick something below and have fun!</p></div>
 
       <h2>My Games <small>(3 games and counting)</small></h2>
 
@@ -142,13 +141,6 @@
         </div>
       </div>
 
-      <h2 id="other" style="margin-top:22px">Other Projects</h2>
-      <ul>
-        <li><a href="Michael H. Bruce/mhb Insurance/index.html">MHB Insurance</a> (website)</li>
-        <li><a href="Harrigan/index.html">Harrigan Insurance</a> (website)</li>
-        <li><a href="FlappyTime/index.html">Flappy Bird clone</a> (HTML5 game)</li>
-        <li><a href="Learning/day1.html">HTML5 app learning: Day 1</a></li>
-      </ul>
     </div>
 
     <div id="side">
@@ -191,7 +183,7 @@
   function go(e) {
     e.preventDefault();
     var q = document.getElementById('q').value.trim().toLowerCase(); if (!q) return;
-    var links = document.querySelectorAll('#main h3 a, #other + ul a');
+    var links = document.querySelectorAll('#main h3 a');
     for (var i = 0; i < links.length; i++) {
       var box = links[i].closest('.game') || links[i].parentNode;
       if (box.textContent.toLowerCase().indexOf(q) >= 0) { location.href = links[i].href; return; }
