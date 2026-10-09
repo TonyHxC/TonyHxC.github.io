@@ -233,7 +233,7 @@
         <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
         <div><span class="dot" style="background:#4fb3ff"></span>Electric peg: charges the ball; it shoots lightning when it lands</div>
       </div>
-      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Hit the target with balls to spare and you choose: keep dropping for more score, or move on and get +2 ● per unused ball.<br>Every 5th floor is a boss with a nasty twist. Floor 5 is the Hoard Dragon: land balls on his head before he moves. Beat him to unlock gold pegs.<br>More power-ups unlock after floors 5, 10 and 15. Bomb pegs come after floor 10, electric pegs after floor 15.</p>
+      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Hit the target with balls to spare and you choose: keep dropping for more score, or move on and get +2 ● per unused ball.<br>Every 5th floor is a boss with a nasty twist. Floor 5 is the Hoard Dragon: land balls on his head before he moves. Beat him to unlock gold pegs. Floor 10 is the Hydra: hit its beating heart while its heads bite your balls.<br>More power-ups unlock after floors 5, 10 and 15. Bomb pegs come after floor 10, electric pegs after floor 15.</p>
       <p><a class="link" href="guide.html" target="_blank">Full player guide ↗</a></p>
       <button class="btn" data-back>Back</button>
     </div></div>
@@ -510,8 +510,8 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.ra
 function startFloor(keepLayout) {
   const f = run.floor;
   const isBoss = f % 5 === 0;
-  const boss = keepLayout ? fl.boss : f === 5 ? DRAGON : (isBoss ? BOSSES[(Math.random() * BOSSES.length) | 0] : null);
-  let ballsN = 5 + U('extra') + run.bonusBalls - (boss && boss.id === 'lean' ? 1 : 0) + (boss && boss.id === 'dragon' ? DRAGON_BALLS : 0);
+  const boss = keepLayout ? fl.boss : f === 5 ? DRAGON : f === 10 ? HYDRA : (isBoss ? BOSSES[(Math.random() * BOSSES.length) | 0] : null);
+  let ballsN = 5 + U('extra') + run.bonusBalls - (boss && boss.id === 'lean' ? 1 : 0) + (boss && boss.id === 'dragon' ? DRAGON_BALLS : 0) + (boss && boss.id === 'hydra' ? HYDRA_BALLS : 0);
   if (!keepLayout) run.bonusBalls = 0;
 
   let pegs, mults;
@@ -548,10 +548,11 @@ function startFloor(keepLayout) {
     }
     mults = mults.map(m => Math.round(m * 10) / 10);
   }
-  fl = { pegs, mults, boss, target: boss && boss.id === 'dragon' ? Math.round(targetFor(f) * DRAGON_HP) : targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
+  fl = { pegs, mults, boss, target: boss && boss.id === 'dragon' ? Math.round(targetFor(f) * DRAGON_HP) : boss && boss.id === 'hydra' ? Math.round(targetFor(f) * HYDRA_HP) : targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
   balls = []; particles = []; texts = []; fire = []; eruptions = []; eruptHoldUntil = 0; bolts = []; zaps = [];
   mode = 'play';
   dragon = boss && boss.id === 'dragon' ? newDragon() : null;
+  hydra = boss && boss.id === 'hydra' ? newHydra() : null;
   for (const p of pegs) p.flash = 0;
   showOverlay(null);
   updateHUD();
@@ -570,7 +571,7 @@ function spawnBall(x, free) {
 
 function drop() {
   if (mode !== 'play' || fl.ballsLeft <= 0 || dropCooldown > 0) return;
-  if (fl.choice || (dragon && dragon.dead)) return;
+  if (fl.choice || (hpBoss() && hpBoss().dead)) return;
   fl.waitDrop = false;
   fl.ballsLeft--;
   dropCooldown = 0.22;
@@ -656,13 +657,13 @@ function settle(b) {
   const i = Math.max(0, Math.min(BUCKET_COUNT - 1, Math.floor((b.x - WALL_L) / bw)));
   const m = fl.mults[i];
   const total = Math.round(b.pts * b.mult * m);
-  const vsDragon = !!dragon;
+  const vsDragon = !!hpBoss();
   if (!vsDragon) fl.score += total;
   run.totalScore += total;
   run.bestBall = Math.max(run.bestBall, total);
   const cx = WALL_L + bw * (i + 0.5);
   const col = m === 0 ? '#ff5d73' : m >= 4 ? '#ffd166' : m >= 1 ? '#7cf5ff' : '#9a93c4';
-  if (vsDragon) addText(cx, BUCKET_TOP - 10, `${total} · missed him`, '#9a93c4', 14, 1.4);
+  if (vsDragon) addText(cx, BUCKET_TOP - 10, `${total} · missed ${dragon ? 'him' : 'the heart'}`, '#9a93c4', 14, 1.4);
   else addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
   burst(cx, BUCKET_TOP + 20, col, m >= 4 ? 30 : 12, m >= 4 ? 260 : 140);
   bucketFlash[i] = 1;
@@ -727,6 +728,7 @@ function stepPhysics(dt) {
     if (b.age > 25) b.y = BUCKET_TOP + 30;
 
     if (dragon && dragonHitTest(b)) { dragonHit(b); balls.splice(bi, 1); continue; }
+    if (hydra && hydraBallStep(b)) { balls.splice(bi, 1); continue; }
     if (b.y > BUCKET_TOP + 24) { settle(b); balls.splice(bi, 1); }
   }
 }
@@ -734,7 +736,7 @@ function stepPhysics(dt) {
 function checkFloorEnd() {
   if (mode !== 'play' || balls.length || eruptions.length || zaps.length || time < eruptHoldUntil) return;
   if (fl.choice || fl.waitDrop) return;
-  if (fl.score >= fl.target) { if (fl.ballsLeft > 0 && !dragon) offerKeepDropping(); else floorCleared(); }
+  if (fl.score >= fl.target) { if (fl.ballsLeft > 0 && !hpBoss()) offerKeepDropping(); else floorCleared(); }
   else if (fl.ballsLeft <= 0) floorFailed();
 }
 // target reached with balls still in hand: keep dropping for score, or move on and bank +2 ● per unused ball
@@ -876,6 +878,138 @@ function drawDragon() {
   }
 }
 
+// ---------- Floor 10 boss: the Hydra ----------
+// Its beating heart sits in a bucket: land balls on it (damage = pts × mult × 4, like the dragon). The heart jumps to
+// another bucket when hit and every 15 s. Meanwhile heads slither out of the side walls along the gaps between peg rows,
+// snarl, and lunge at nearby balls: a bite steals half the ball's points and flings it. Every heart hit grows a head (max 3 at once).
+const HYDRA = { id: 'hydra', name: 'Hydra', desc: 'Its heart beats in one of the buckets: land balls on it. Heads slither out between the pegs and bite your balls.' };
+const HYDRA_HP = 0.55, HYDRA_BALLS = 3, HEART_R = 22, HEART_MULT = 4, HEART_MOVE = 15;
+let hydra = null;
+const hpBoss = () => dragon || hydra;
+function newHydra() { return { heart: (Math.random() * BUCKET_COUNT) | 0, heartT: 0, hurt: 0, hits: 0, dead: false, deadT: 0, heads: [], spawnT: 2.2, hop: 0 }; }
+function heartPos() { const pulse = beatOf(time); return { x: bucketX(hydra.heart), y: BUCKET_TOP + 16 - hydra.hop * 30, r: HEART_R * (1 + 0.1 * pulse) }; }
+function beatOf(t) { const k = (t * 1.3) % 1; return Math.max(Math.exp(-((k - 0.05) ** 2) / 0.002), 0.6 * Math.exp(-((k - 0.22) ** 2) / 0.002)); } // lub-dub
+function moveHeart() {
+  const opts = []; for (let i = 0; i < BUCKET_COUNT; i++) if (Math.abs(i - hydra.heart) >= 2) opts.push(i);
+  hydra.heart = opts[(Math.random() * opts.length) | 0]; hydra.heartT = 0; hydra.hop = 1;
+  sfx(90, 0.18, 'sine', 0.12);
+}
+const laneY = r => PEG_TOP + r * ROW_GAP + ROW_GAP / 2;
+function spawnHead() {
+  const side = Math.random() < 0.5 ? -1 : 1, lane = 1 + ((Math.random() * 10) | 0);
+  const busy = hydra.heads.some(h => h.lane === lane);
+  hydra.heads.push({ side, lane: busy ? (lane + 3) % 11 + 1 : lane, ext: 0, reach: 170 + Math.random() * 200, phase: 'out', t: 0, hx: 0, hy: 0, oy: 0, jaw: 0, target: null, wob: Math.random() * 6 });
+  snarl(0.8);
+}
+function snarl(len) { sfxNoise(len, 0.06, 260); sfx(65 + Math.random() * 20, len, 'sawtooth', 0.06); }
+function updateHydra(dt) {
+  const h = hydra;
+  h.hurt = Math.max(0, h.hurt - dt * 3); h.hop = Math.max(0, h.hop - dt * 3);
+  if (h.dead) { h.deadT += dt; for (const hd of h.heads) hd.phase = 'back'; }
+  else if (!fl.choice) {
+    h.heartT += dt; if (h.heartT > HEART_MOVE) moveHeart();
+    const maxHeads = Math.min(3, 2 + h.hits);
+    h.spawnT -= dt; if (h.spawnT <= 0) { if (h.heads.length < maxHeads) spawnHead(); h.spawnT = 2 + Math.random() * 2.5; }
+  }
+  for (let i = h.heads.length - 1; i >= 0; i--) {
+    const hd = h.heads[i]; hd.t += dt; hd.wob += dt * 5;
+    const x0 = hd.side < 0 ? WALL_L - 14 : WALL_R + 14, dir = -hd.side, ly = laneY(hd.lane);
+    if (hd.phase === 'out') { hd.ext = Math.min(hd.reach, hd.ext + 150 * dt); if (hd.ext >= hd.reach && hd.t > 3.5) hd.phase = 'back'; }
+    else if (hd.phase === 'back') { hd.ext -= 230 * dt; hd.oy *= 0.9; if (hd.ext <= 0) { h.heads.splice(i, 1); continue; } }
+    // hunt: lunge at the nearest ball within reach of the head
+    let tgt = null, best = 95;
+    if (hd.phase === 'out') for (const b of balls) { const d = Math.hypot(b.x - hd.hx, b.y - hd.hy); if (d < best && !b.bitten) { best = d; tgt = b; } }
+    hd.target = tgt;
+    if (tgt) { const want = Math.max(-34, Math.min(34, tgt.y - ly)); hd.oy += (want - hd.oy) * Math.min(1, dt * 8); hd.ext += Math.sign((tgt.x - x0) * dir - hd.ext) * 260 * dt; hd.ext = Math.max(20, Math.min(WALL_R - WALL_L, hd.ext)); hd.jaw = 0.5 + 0.5 * Math.sin(hd.t * 22); if (!hd.growled) { hd.growled = true; snarl(0.5); } }
+    else { hd.oy *= 1 - Math.min(1, dt * 3); hd.jaw = 0.25 + 0.25 * Math.sin(hd.t * 4); }
+    hd.hx = x0 + dir * hd.ext; hd.hy = ly + hd.oy + Math.sin(hd.wob) * 5;
+  }
+}
+// returns true if the ball was used up (it hit the heart)
+function hydraBallStep(b) {
+  for (const hd of hydra.heads) {
+    if (!b.bitten && hd.phase !== 'back' && Math.hypot(b.x - hd.hx, b.y - hd.hy) < b.r + 19) {
+      b.bitten = true;
+      const lost = Math.ceil(b.pts / 2); b.pts -= lost;
+      const nx = (b.x - hd.hx) || -hd.side, ny = b.y - hd.hy, k = Math.hypot(nx, ny) || 1;
+      b.vx = nx / k * 420; b.vy = Math.min(b.vy, ny / k * 300 - 120);
+      addText(b.x, b.y - 22, lost ? `CHOMP! -${lost}` : 'CHOMP!', '#7dff9a', 18, 1.2);
+      burst(b.x, b.y, '#4fd18a', 14, 200); shake = Math.max(shake, 6); snarl(0.35); sfx(180, 0.08, 'square', 0.08);
+      hd.phase = 'back'; hd.jaw = 0;
+    }
+  }
+  if (hydra.dead) return false;
+  const hp = heartPos();
+  if (Math.hypot(b.x - hp.x, b.y - hp.y) >= b.r + hp.r) return false;
+  const dmg = Math.max(1, Math.round(b.pts * b.mult * HEART_MULT));
+  fl.score += dmg; run.totalScore += dmg; run.bestBall = Math.max(run.bestBall, dmg); run.coins += 2;
+  hydra.hurt = 1; hydra.hits++;
+  addText(hp.x, hp.y - 36, `SPLAT! -${dmg.toLocaleString()}`, '#ff5d73', 22, 1.5); addText(hp.x, hp.y - 14, '+2 ●', '#ffd166', 13);
+  burst(hp.x, hp.y, '#ff2a4a', 30, 280); burst(hp.x, hp.y, '#7a0016', 14, 160);
+  shake = Math.max(shake, 12); sfx(70, 0.35, 'sine', 0.14); setTimeout(() => snarl(0.9), 60);
+  if (fl.score >= fl.target) {
+    hydra.dead = true; run.coins += 10; eruptHoldUntil = Math.max(eruptHoldUntil, time + 1.8);
+    for (let i = 0; i < 5; i++) setTimeout(() => burst(hp.x + (Math.random() - 0.5) * 70, hp.y - Math.random() * 40, i % 2 ? '#ff2a4a' : '#ffd166', 40, 340), i * 160);
+    sfx(523, 0.2, 'triangle', 0.08); setTimeout(() => sfx(659, 0.2, 'triangle', 0.08), 140); setTimeout(() => sfx(1046, 0.4, 'triangle', 0.08), 280);
+    toast('🐍 The Hydra is slain! +10 ●', 2200);
+  } else { moveHeart(); setTimeout(() => { if (hydra && !hydra.dead && hydra.heads.length < 3) spawnHead(); }, 400); } // hit it and it grows a head
+  updateHUD();
+  return true;
+}
+function drawHydra() {
+  const h = hydra;
+  // necks + heads
+  for (const hd of h.heads) {
+    const x0 = hd.side < 0 ? WALL_L - 14 : WALL_R + 14, ly = laneY(hd.lane), n = 22, pts = [];
+    for (let i = 0; i <= n; i++) {
+      const f = i / n, x = x0 + (hd.hx - x0) * f;
+      pts.push([x, ly + (hd.hy - ly) * f * f + Math.sin(hd.wob - i * 0.7) * 8 * Math.sin(f * Math.PI)]);
+    }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const neck = (w, c) => { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); };
+    neck(22, '#0e3b33'); neck(16, h.hurt > 0 ? '#c0505a' : '#1f7a5e'); neck(5, '#5fd3a3');
+    // scales
+    ctx.fillStyle = '#145c47';
+    for (let i = 2; i < n; i += 2) { const [x, y] = pts[i]; ctx.beginPath(); ctx.arc(x, y - 3, 2, 0, 7); ctx.fill(); }
+    // head, facing into the board
+    const dir = -hd.side, ang = Math.atan2(hd.hy - pts[n - 2][1], (hd.hx - pts[n - 2][0]) || dir);
+    ctx.save(); ctx.translate(hd.hx, hd.hy); ctx.rotate(ang); ctx.scale(1.35, 1.35);
+    const jaw = hd.jaw * 0.6;
+    ctx.fillStyle = '#7a0016'; ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(24, -10 * jaw - 1); ctx.lineTo(24, 10 * jaw + 1); ctx.closePath(); ctx.fill(); // mouth
+    for (const s of [-1, 1]) { // jaws
+      ctx.save(); ctx.rotate(s * jaw);
+      ctx.fillStyle = h.hurt > 0 ? '#d06a70' : '#2a9a72'; ctx.beginPath(); ctx.moveTo(-14, s * 1); ctx.quadraticCurveTo(4, s * 15, 26, s * 3); ctx.lineTo(-6, s * 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#fff'; for (const tx of [8, 14, 20]) { ctx.beginPath(); ctx.moveTo(tx, s * 3); ctx.lineTo(tx + 2.5, s * -1); ctx.lineTo(tx + 5, s * 3); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+    }
+    ctx.fillStyle = h.hurt > 0 ? '#d06a70' : '#2a9a72'; ctx.beginPath(); ctx.ellipse(-6, 0, 14, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#145c47'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-14, s * 6); ctx.lineTo(-24, s * 14); ctx.lineTo(-10, s * 9); ctx.closePath(); ctx.fill(); } // frills
+    ctx.fillStyle = hd.target || hd.jaw > 0.6 ? '#ff3b3b' : '#ffe66b'; ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = hd.jaw > 0.6 ? 8 : 0;
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(0, s * 5, 3, 2.4, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.shadowBlur = 0; ctx.fillStyle = '#111'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse(0.5, s * 5, 0.9, 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  if (h.dead && h.deadT > 1.2) return;
+  // the beating heart in its bucket
+  const hp = heartPos(), s = hp.r / HEART_R * (h.dead ? Math.max(0, 1 - h.deadT) : 1), beat = beatOf(time);
+  ctx.save(); ctx.translate(hp.x, hp.y); ctx.scale(s, s);
+  ctx.shadowColor = '#ff2a4a'; ctx.shadowBlur = 10 + 14 * beat;
+  ctx.fillStyle = h.hurt > 0 ? '#ffffff' : '#c8102e';
+  ctx.beginPath(); ctx.moveTo(0, 18); ctx.bezierCurveTo(-26, 2, -20, -20, -7, -16); ctx.bezierCurveTo(-3, -15, 0, -11, 0, -8); ctx.bezierCurveTo(0, -11, 3, -15, 7, -16); ctx.bezierCurveTo(20, -20, 26, 2, 0, 18); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#7a0016'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-10, -10); ctx.quadraticCurveTo(-4, -2, -6, 8); ctx.moveTo(6, -12); ctx.quadraticCurveTo(10, -2, 4, 10); ctx.moveTo(-6, 0); ctx.lineTo(-12, 2); ctx.stroke();
+  ctx.fillStyle = '#ff8a9a'; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.ellipse(-8, -9, 4, 2.5, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  ctx.fillStyle = '#5a0a1a'; for (const x of [-4, 4]) { ctx.fillRect(x - 2, -20, 4, 6); } // arteries
+  ctx.restore();
+  // countdown ring: when the heart will jump
+  if (!h.dead) {
+    const left = 1 - h.heartT / HEART_MOVE;
+    ctx.strokeStyle = left < 0.15 ? '#ff5d73' : '#ff9aa8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(hp.x, BUCKET_TOP - 20, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+  }
+}
+
 // ---------- Floor end ----------
 let offer = [];
 function floorCleared() {
@@ -889,7 +1023,7 @@ function floorCleared() {
   const parts = [`+3 ● for clearing`];
   if (unused) parts.push(`+${unused * 2} ● for ${unused} unused ball${unused > 1 ? 's' : ''}`);
   if (interest) parts.push(`+${interest} ● interest`);
-  $('rewardTitle').textContent = dragon ? 'The Hoard Dragon is slain!' : `Floor ${run.floor} cleared!`;
+  $('rewardTitle').textContent = dragon ? 'The Hoard Dragon is slain!' : hydra ? 'The Hydra is slain!' : `Floor ${run.floor} cleared!`;
   const newUps = UPGRADES.filter(u => UNLOCK[u.id] === run.floor);
   if (newUps.length) parts.push(`<br><b style="color:var(--gold)">New power-ups unlocked:</b> ${newUps.map(u => u.icon + ' ' + u.name).join(', ')}`);
   if (run.floor === GOLD_FROM - 1) parts.push(`<br><b style="color:var(--gold)">✦ Gold pegs</b> spill out of his hoard from now on.`);
@@ -1094,11 +1228,11 @@ function updateHUD() {
   if (fl) {
     const pct = Math.min(100, fl.score / fl.target * 100);
     $('progFill').classList.toggle('done', fl.score >= fl.target);
-    $('progFill').classList.toggle('hp', !!dragon);
-    if (dragon) {
-      const hp = Math.max(0, fl.target - fl.score);
+    $('progFill').classList.toggle('hp', !!hpBoss());
+    if (hpBoss()) {
+      const hp = Math.max(0, fl.target - fl.score), who = dragon ? '🐉 Dragon' : '🐍 Hydra';
       $('progFill').style.width = (100 - pct) + '%';
-      $('progLabel').textContent = hp ? `🐉 Dragon HP ${hp.toLocaleString()} / ${fl.target.toLocaleString()}` : '🐉 Defeated!';
+      $('progLabel').textContent = hp ? `${who} HP ${hp.toLocaleString()} / ${fl.target.toLocaleString()}` : `${who} defeated!`;
     } else {
       $('progFill').style.width = pct + '%';
       $('progLabel').textContent = `${fl.score.toLocaleString()} / ${fl.target.toLocaleString()}`;
@@ -1720,6 +1854,7 @@ function draw() {
   }
 
   if (dragon) drawDragon();
+  if (hydra) drawHydra();
 
   // fire (ball flames + eruptions), additive
   drawFire();
@@ -1841,6 +1976,7 @@ function update(dt) {
     for (let i = 0; i < SUB; i++) stepPhysics(dt / SUB);
     for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); igniteCheck(b); emitBallFire(b, dt); }
     if (dragon) updateDragon(dt);
+    if (hydra) updateHydra(dt);
     checkFloorEnd();
   }
   if (mode !== 'paused') { updateFire(dt); if (fl) updateElectric(dt); }
@@ -1884,6 +2020,18 @@ window.__plinko = {
   take(id) { takeUpgrade(id); },
   goFloor(f) { run.floor = f; startFloor(); },
   get dragon() { return dragon; },
+  get hydra() { return hydra; },
+  simHydra(upgrades = {}, smart = true) { // headless floor 10: aims at the heart's bucket
+    run = { floor: 10, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };
+    startFloor(); let hits = 0, bites = 0, steps = 0; const dt = 1 / 360; let lastScore = 0;
+    while ((fl.ballsLeft > 0 || balls.length) && !hydra.dead && steps < 360 * 300) {
+      if (balls.length === 0 && fl.ballsLeft > 0 && (!smart || hydra.heartT < HEART_MOVE - 4)) { aimX = clampAim(smart ? bucketX(hydra.heart) + (Math.random() - 0.5) * 30 : 20 + Math.random() * 560); fl.ballsLeft--; spawnBall(aimX); }
+      const bt = balls.filter(b => b.bitten).length; stepPhysics(dt); updateHydra(dt); time += dt; steps++;
+      if (fl.score > lastScore) { hits++; lastScore = fl.score; }
+      bites += Math.max(0, balls.filter(b => b.bitten).length - bt);
+    }
+    const r = { hp: fl.target, dmg: fl.score, hits, bites, dead: hydra.dead, balls: fl.ballsTotal }; mode = 'menu'; showOverlay('ovMenu'); return r;
+  },
   simDragon(upgrades = {}, smart = true) { // headless: floor 5 with an AI that aims at the head right after it pops up
     run = { floor: 5, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };
     startFloor(); let hits = 0, steps = 0; const dt = 1 / 360;

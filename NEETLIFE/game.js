@@ -43,12 +43,30 @@ const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2],
 let G = { pos: [], nor: [], col: [], glow: [] };   // current build target (static room by default)
 const STATIC_G = G;
 function intoGeometry(target, fn) { const prev = G; G = target; try { fn(); } finally { G = prev; } }
+// Furniture is built in its own local space (origin = min corner of its footprint, w×d) and placed with a
+// transform: offset (ox, oz) + quarter turns r (0..3, clockwise from above). Boxes stay axis-aligned under 90° turns.
+// `tint` blends every colour (the green/red ghost while you move a piece).
+let XF = null;
+function withXF(xf, fn) { const prev = XF; XF = xf; try { fn(); } finally { XF = prev; } }
+function xfPt(lx, lz) {
+  const { w, d, r, ox, oz } = XF;
+  const q = r === 1 ? [d - lz, lx] : r === 2 ? [w - lx, d - lz] : r === 3 ? [lz, w - lx] : [lx, lz];
+  return [ox + q[0], oz + q[1]];
+}
+const FACE_TURN = { n: 'e', e: 's', s: 'w', w: 'n', t: 't', b: 'b' };
+function xfColor(c) { return XF && XF.tint ? lerp3(c, XF.tint, 0.55) : c; }
 function quad(p0, p1, p2, p3, n, c, g) {
   for (const p of [p0, p1, p2, p0, p2, p3]) { G.pos.push(p[0], p[1], p[2]); G.nor.push(n[0], n[1], n[2]); G.col.push(c[0], c[1], c[2]); G.glow.push(g); }
 }
 // axis-aligned box from min corner (x,y,z) and size (w,h,d). `skip` lists faces to omit.
 function box(x, y, z, w, h, d, color, glow = 0, skip = '') {
-  const c = typeof color === 'string' ? hex(color) : color;
+  let c = typeof color === 'string' ? hex(color) : color;
+  if (XF) {
+    const [ax, az] = xfPt(x, z), [bx, bz] = xfPt(x + w, z + d);
+    x = Math.min(ax, bx); z = Math.min(az, bz); w = Math.abs(bx - ax); d = Math.abs(bz - az);
+    for (let i = 0; i < XF.r; i++) skip = skip.split('').map(f => FACE_TURN[f] || f).join('');
+    c = xfColor(c); if (XF.tint) glow = 0;
+  }
   const X = x + w, Y = y + h, Z = z + d;
   // small per-face shade variation gives the low-poly look some life
   const sh = (k) => [c[0] * k, c[1] * k, c[2] * k];
@@ -61,7 +79,8 @@ function box(x, y, z, w, h, d, color, glow = 0, skip = '') {
 }
 // vertical n-sided prism (cans, lamp stems, bins)
 function prism(cx, y, cz, r, h, color, sides = 8, glow = 0) {
-  const c = typeof color === 'string' ? hex(color) : color;
+  let c = typeof color === 'string' ? hex(color) : color;
+  if (XF) { [cx, cz] = xfPt(cx, cz); c = xfColor(c); if (XF.tint) glow = 0; }
   for (let i = 0; i < sides; i++) {
     const a0 = i / sides * Math.PI * 2, a1 = (i + 1) / sides * Math.PI * 2, am = (a0 + a1) / 2;
     const x0 = cx + Math.cos(a0) * r, z0 = cz + Math.sin(a0) * r, x1 = cx + Math.cos(a1) * r, z1 = cz + Math.sin(a1) * r;
@@ -192,52 +211,8 @@ function buildRoom() {
   // baseboards
   box(0, 0, 0, ROOM.w, 0.08, 0.02, trim); box(0, 0, 0, 0.02, 0.08, ROOM.d, trim); box(ROOM.w - 0.02, 0, 0, 0.02, 0.08, ROOM.d, trim);
 
-  // ---- bed (west wall) ----
-  box(0.02, 0, 0.15, 1.0, 0.3, 2.05, '#5b4636');          // frame
-  box(0.05, 0.3, 0.2, 0.94, 0.18, 1.98, '#ece8e0');       // mattress
-  box(0.04, 0.46, 0.75, 0.96, 0.08, 1.45, '#3d5a8a');     // blanket
-  box(0.04, 0.42, 0.7, 0.96, 0.06, 0.1, '#344d78');       // blanket fold
-  box(0.18, 0.48, 0.25, 0.66, 0.12, 0.38, '#f6f3ec');     // pillow
-  box(0.02, 0, 0.0, 1.0, 1.0, 0.15, '#4a382b');           // headboard
-  solid(0, 0, 1.05, 2.2);
-  thing('bed', 'Sleep', [0, 0, 0.15, 1.05, 0.7, 2.2]);
-  // nightstand + lamp
-  box(1.08, 0, 0.05, 0.42, 0.5, 0.4, '#6b5240');
-  box(1.1, 0.5, 0.07, 0.38, 0.02, 0.36, '#7a5e4a');
-  prism(1.29, 0.52, 0.25, 0.08, 0.02, '#333', 8);
-  prism(1.29, 0.54, 0.25, 0.015, 0.28, '#333', 6);
-  prism(1.29, 0.8, 0.25, 0.12, 0.16, '#f2d9a6', 8, 4); // lampshade glows
-  solid(1.05, 0, 1.52, 0.47);
-
-  // ---- desk + PC (north wall, right of window) ----
-  const dx = 2.7, dw = 1.5;
-  box(dx, 0.72, 0.02, dw, 0.04, 0.7, '#3b3a44');           // top
-  box(dx + 0.03, 0, 0.06, 0.05, 0.72, 0.05, '#222'); box(dx + dw - 0.08, 0, 0.06, 0.05, 0.72, 0.05, '#222');
-  box(dx + 0.03, 0, 0.62, 0.05, 0.72, 0.05, '#222'); box(dx + dw - 0.08, 0, 0.62, 0.05, 0.72, 0.05, '#222');
-  // monitor
-  box(dx + 0.68, 0.76, 0.18, 0.14, 0.02, 0.12, '#1d1d22');
-  box(dx + 0.72, 0.78, 0.22, 0.06, 0.18, 0.04, '#1d1d22');
-  box(dx + 0.33, 0.9, 0.16, 0.84, 0.5, 0.04, '#141418');
-  box(dx + 0.36, 0.93, 0.2, 0.78, 0.44, 0.005, '#ffffff', 2);      // screen
-  // tower
-  box(dx + dw - 0.3, 0.76, 0.12, 0.2, 0.42, 0.42, '#1f1f26');
-  box(dx + dw - 0.29, 1.0, 0.54, 0.02, 0.1, 0.005, '#7cf5ff', 2);
-  // keyboard + mouse + clutter
-  box(dx + 0.45, 0.76, 0.42, 0.6, 0.02, 0.18, '#2a2a30');
-  box(dx + 1.15, 0.76, 0.46, 0.06, 0.02, 0.1, '#2a2a30');
-  prism(dx + 0.15, 0.76, 0.45, 0.033, 0.12, '#3ad66b', 8);   // energy drinks
-  prism(dx + 0.24, 0.76, 0.52, 0.033, 0.12, '#3ad66b', 8);
-  prism(dx + 0.1, 0.76, 0.58, 0.033, 0.12, '#d63a3a', 8);
-  box(dx + 0.05, 0.76, 0.1, 0.28, 0.06, 0.22, '#c9a36b');    // pizza box
-  solid(dx, 0, dx + dw, 0.72);
-  thing('pc', 'Use computer', [dx + 0.3, 0.72, 0, dx + 1.2, 1.45, 0.72]);
-  // chair
-  const cx = dx + 0.75, cz = 1.15;
-  prism(cx, 0, cz, 0.28, 0.04, '#222', 5);
-  prism(cx, 0.04, cz, 0.03, 0.4, '#333', 6);
-  box(cx - 0.25, 0.44, cz - 0.25, 0.5, 0.08, 0.5, '#b03030');
-  box(cx - 0.24, 0.52, cz + 0.2, 0.48, 0.65, 0.07, '#b03030');
-  solid(cx - 0.28, cz - 0.28, cx + 0.28, cz + 0.3);
+  // bed, nightstand + lamp, desk + PC, chair, rug, beanbag, clutter and the trash bin are movable furniture:
+  // they live in furniture.js and are drawn into their own mesh (FURN_G).
 
   // ---- kitchenette (east wall) ----
   const kx = 4.38;
@@ -270,21 +245,8 @@ function buildRoom() {
   box(kx - 0.05, 1.3, 2.75, 0.03, 0.3, 0.04, '#aaaaaa');
   solid(kx - 0.05, 2.7, ROOM.w, 3.4);
   thing('fridge', 'Fridge', [kx - 0.06, 0, 2.7, ROOM.w, 1.8, 3.4]);
-  // trash bin
-  prism(4.75, 0, 3.65, 0.16, 0.45, '#3a3a40', 8);
-  prism(4.75, 0.45, 3.65, 0.17, 0.03, '#2c2c32', 8);
-  solid(4.58, 3.48, 4.92, 3.82);
-  thing('trash', 'Trash', [4.56, 0, 3.46, 4.94, 0.6, 3.84]);
 
   // ---- living bits ----
-  box(1.6, 0.0, 1.5, 1.9, 0.01, 1.4, '#5a3a5e');                 // rug
-  box(1.68, 0.01, 1.58, 1.74, 0.005, 1.24, '#6b4870');
-  // beanbag (stacked boxes) + game console
-  box(1.7, 0, 2.55, 0.7, 0.3, 0.7, '#2f6b5a'); box(1.78, 0.3, 2.62, 0.54, 0.16, 0.55, '#327562'); box(1.74, 0.3, 3.05, 0.62, 0.35, 0.2, '#2f6b5a');
-  solid(1.7, 2.55, 2.4, 3.25);
-  // pizza boxes + laundry pile
-  box(3.7, 0, 2.9, 0.42, 0.05, 0.42, '#c9a36b'); box(3.72, 0.05, 2.92, 0.42, 0.05, 0.42, '#bf9860'); box(3.69, 0.1, 2.88, 0.42, 0.05, 0.42, '#c9a36b');
-  box(0.2, 0, 2.6, 0.5, 0.18, 0.4, '#6d7a8c'); box(0.3, 0.18, 2.66, 0.32, 0.12, 0.28, '#8c5a5a');
   // poster above bed
   box(0.0, 1.25, 0.6, 0.02, 0.8, 0.6, '#1d1730');
   box(0.02, 1.32, 0.66, 0.01, 0.66, 0.48, '#b98cff');
@@ -295,7 +257,6 @@ function buildRoom() {
   // light switch
   box(1.55, 1.15, ROOM.d - 0.02, 0.08, 0.12, 0.02, '#f4f0e6');
   thing('switch', () => S.lightOn ? 'Turn the lights off' : 'Turn the lights on', [1.47, 1.0, ROOM.d - 0.14, 1.71, 1.4, ROOM.d]);
-  thing('lamp', () => S.lampOn === false ? 'Turn the lamp on' : 'Turn the lamp off', [1.15, 0.5, 0.1, 1.43, 0.98, 0.4]);
 }
 
 // =====================================================================
@@ -318,9 +279,10 @@ function drawCoreDynamic() {
   else { box(2.62, 0, ROOM.d - 0.03, 0.76, 2.08, 0.06, '#efe8da'); prism(2.7, 1.0, ROOM.d - 0.07, 0.03, 0.03, '#bbbbbb', 6); prism(2.7, 1.0, ROOM.d + 0.07, 0.03, 0.03, '#bbbbbb', 6); }
 }
 // Environment knobs (weather.js writes these every frame). glow[] holds colours for glow groups 6..11.
-const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {}, selfVisible: false };
+// lampPos / monPos follow the nightstand and desk when they're moved (null = not in the room); extraLight = a floor lamp
+const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {}, selfVisible: false, lampPos: [1.29, 0.95, 0.25], monPos: [3.45, 1.15, 0.45], extraLight: null };
 // Glow groups: 1 sky, 2 monitor, 3 ceiling bulb, 4 lamp, 5 burner, 6 sun/moon, 7 stars, 8 city lights, 9 clouds, 10 rain, 11 lightning
-const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12 };
+const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12, TV: 13, LAVA: 14, TANK: 15, FLOORLAMP: 16, ARCADE: 17 };
 // module hooks (cooking.js etc. register into these)
 const hooks = { interact: [], update: [], draw: [], drawSelf: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [] };
 // the active camera: first person by default; modules (character.js) may return {x,y,z,yaw,pitch,reach}
@@ -334,8 +296,8 @@ const FS = `
 precision mediump float;
 varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
 uniform vec3 uAmbSky; uniform vec3 uAmbGround;
-uniform vec3 uLP[4]; uniform vec3 uLC[4];
-uniform vec3 uGlow[14];
+uniform vec3 uLP[5]; uniform vec3 uLC[5];
+uniform vec3 uGlow[18];
 uniform vec4 uClip; uniform float uTint;
 uniform vec3 uWinPos; uniform vec3 uWinCol;
 uniform vec3 uSunDir; uniform vec3 uSunCol;
@@ -345,7 +307,7 @@ void main() {
   if (dot(vPos, uClip.xyz) + uClip.w < 0.0) discard;
   if (vGlow > 0.5) {
     vec3 g = vec3(1.0);
-    for (int i = 1; i < 14; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
+    for (int i = 1; i < 18; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
     gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25) * uTint, 1.0); return;
   }
   vec3 n = normalize(vNor);
@@ -355,10 +317,10 @@ void main() {
   // the bathroom (z > 4.08) has no window: dim ambient, and lights mostly stay in their own room
   float inBath = step(4.08, vPos.z);
   vec3 lit = amb * ao * mix(1.0, 0.55, inBath);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     vec3 L = uLP[i] - vPos; float d = length(L); L /= d;
     float wrap = max(dot(n, L) * 0.8 + 0.2, 0.0);
-    float room = i < 3 ? mix(1.0, 0.1, inBath) : mix(0.06, 1.0, inBath);
+    float room = i == 3 ? mix(0.06, 1.0, inBath) : mix(1.0, 0.1, inBath);
     lit += uLC[i] * wrap * room / (1.0 + 0.9 * d * d);
   }
   // window light: a soft area light from the north wall
@@ -385,7 +347,9 @@ function compile(type, src) {
 }
 const ATTRS = [['aPos', 3], ['aNor', 3], ['aCol', 3], ['aGlow', 1]];
 const KEYS = { aPos: 'pos', aNor: 'nor', aCol: 'col', aGlow: 'glow' };
-let staticBufs, dynBufs, selfBufs, mirrorBufs, bathBufs, doorFillBufs;
+let staticBufs, dynBufs, selfBufs, mirrorBufs, bathBufs, doorFillBufs, furnBufs = null;
+let FURN_G = { pos: [], nor: [], col: [], glow: [] }, furnDirty = true;
+function setFurniture(geo) { FURN_G = geo; furnDirty = true; }
 function makeBufs(geo, usage) {
   const o = {};
   for (const [name] of ATTRS) { o[name] = gl.createBuffer(); if (geo) { gl.bindBuffer(gl.ARRAY_BUFFER, o[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geo[KEYS[name]]), usage); } }
@@ -467,15 +431,17 @@ function render() {
   gl.uniform3fv(uni.uAmbSky, lerp3([0.12, 0.12, 0.2], [0.62, 0.62, 0.66], dayK).map(v => v * (0.6 + ambK) + fl * 0.45));
   gl.uniform3fv(uni.uAmbGround, lerp3([0.06, 0.05, 0.07], [0.36, 0.3, 0.26], dayK).map(v => v + fl * 0.2));
   // lights: ceiling + bedside lamp (switchable; storms can flicker the power), monitor glow
-  const ceilOn = S.lightOn ? env.power : 0, lampOn = S.lampOn === false ? 0 : env.power;
+  const ceilOn = S.lightOn ? env.power : 0, lampOn = S.lampOn === false || !env.lampPos ? 0 : env.power;
   const mon = pcOpen ? [0.45, 0.6, 1.0] : [0.25, 0.35, 0.7];
   const bathOn = S.bathLight === false ? 0 : env.power;
-  gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, 1.29, 0.95, 0.25, 3.45, 1.15, 0.45, 3.15, 2.4, 5.05]);
+  const xl = env.extraLight;
+  gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, ...(env.lampPos || [0, -5, 0]), ...(env.monPos || [0, -5, 0]), 3.15, 2.4, 5.05, ...(xl ? xl.pos : [0, -5, 0])]);
   gl.uniform3fv(uni.uLC, [
     1.25 * ceilOn, 1.12 * ceilOn, 0.92 * ceilOn,
     0.55 * lampOn, 0.42 * lampOn, 0.25 * lampOn,
-    mon[0] * 0.5 * env.power, mon[1] * 0.5 * env.power, mon[2] * 0.5 * env.power,
+    ...(env.monPos ? [mon[0] * 0.5 * env.power, mon[1] * 0.5 * env.power, mon[2] * 0.5 * env.power] : [0, 0, 0]),
     1.9 * bathOn, 1.85 * bathOn, 1.75 * bathOn,
+    ...(xl ? xl.col.map(v => v * env.power) : [0, 0, 0]),
   ]);
   gl.uniform3fv(uni.uWinPos, [1.8, 1.5, -0.4]);
   gl.uniform3fv(uni.uWinCol, skyC.map((v, i) => v * (0.25 + 1.4 * dayK) + fl * 1.6));
@@ -483,7 +449,7 @@ function render() {
   const sun = sunState(h);
   gl.uniform3fv(uni.uSunDir, sun.dir);
   gl.uniform3fv(uni.uSunCol, sun.col.map(v => v * sun.k * Math.pow(1 - cl, 2.2)));
-  const glow = new Array(42).fill(0);
+  const glow = new Array(54).fill(0);
   const setG = (i, c) => { glow[i * 3] = c[0]; glow[i * 3 + 1] = c[1]; glow[i * 3 + 2] = c[2]; };
   setG(GLOW.SKY, skyC.map(v => Math.min(1, v * 1.15)));
   setG(GLOW.MONITOR, (internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]).map(v => v * (0.2 + 0.8 * env.power)));
@@ -499,10 +465,12 @@ function render() {
   intoGeometry(SELF, () => { for (const fn of hooks.drawSelf) fn(); });
   const upload = (bufs, geo) => { for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, bufs[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geo[KEYS[name]]), gl.DYNAMIC_DRAW); } };
   if (D.pos.length) upload(dynBufs, D);
+  if (furnDirty) { furnBufs = furnBufs || makeBufs(null, gl.STATIC_DRAW); upload(furnBufs, FURN_G); furnDirty = false; }
   if (SELF.pos.length) upload(selfBufs, SELF);
   // partial = only the bathroom and yourself (the cheap reflection)
   const drawWorld = (withSelf, partial) => {
     if (!partial) { bindBufs(staticBufs); gl.drawArrays(gl.TRIANGLES, 0, vertCount); }
+    if (!partial && FURN_G.pos.length) { bindBufs(furnBufs); gl.drawArrays(gl.TRIANGLES, 0, FURN_G.pos.length / 3); }
     bindBufs(bathBufs); gl.drawArrays(gl.TRIANGLES, 0, BATH_G.pos.length / 3);
     if (!partial && D.pos.length) { bindBufs(dynBufs); gl.drawArrays(gl.TRIANGLES, 0, D.pos.length / 3); }
     if (withSelf && SELF.pos.length) { bindBufs(selfBufs); gl.drawArrays(gl.TRIANGLES, 0, SELF.pos.length / 3); }
@@ -1065,6 +1033,7 @@ function applyPcSize() {
   const W = innerWidth * f, H = innerHeight * f, z = Math.min(1, W / 960, H / 600);
   m.style.width = W / z + 'px'; m.style.height = H / z + 'px'; m.style.zoom = z;
   m.style.borderRadius = f === 1 ? '0' : ''; m.style.padding = f === 1 ? '6px' : '';
+  const tb = document.querySelector('.taskbar'); if (tb) tb.classList.toggle('compact', W / z < 1250); // icon-only app buttons when the screen is narrow
   if (typeof pcSizer !== 'undefined') pcSizer.place();
 }
 window.addEventListener('resize', applyPcSize);
@@ -1115,6 +1084,7 @@ function openSettings(from) { settingsBack = from; renderSettings(); showScreen(
 window.NEET = {
   hooks, box, prism, quad, thing, things, env, MIRROR, BATH, walkable, settings, begin, showScreen, renderTitle, lockPointer,
   get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC, internetOn, clockStr, dayOf,
+  solids, ROOM, withXF, intoGeometry, setFurniture, advance, closePC, openPC, get hovered() { return hovered; }, get locked() { return locked; },
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
   setBurnerGlow(c) { burnerGlow = c; },

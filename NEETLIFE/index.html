@@ -65,6 +65,8 @@
   .taskbar .start { background: var(--accent); color: #111; border-radius: 6px; padding: 4px 10px; font-weight: 900; letter-spacing: 1px; }
   .taskbar .sp { flex: 1; }
   .taskbar .money { color: var(--green); }
+  .taskbar.compact button[data-app], .taskbar.compact button:not([id]) { font-size: 0; padding: 5px 8px; } .taskbar.compact button[data-app]::first-letter, .taskbar.compact button:not([id])::first-letter { font-size: 14px; }
+  #tbClock { white-space: nowrap; }
   .taskbar button { font: inherit; font-size: 12px; font-weight: 800; color: var(--text); background: #ffffff14; border: 1px solid #ffffff22; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
   .win { position: absolute; inset: 14px 14px 54px 14px; background: #f4f2ec; color: #1b1a22; border-radius: 10px; display: none; flex-direction: column; overflow: hidden; box-shadow: 0 20px 50px #0009; }
   .win.show { display: flex; }
@@ -188,6 +190,7 @@
 </div></div></div>
 
 <script src="game.js"></script>
+<script src="furniture.js"></script>
 <script src="cooking.js"></script>
 <script src="weather.js"></script>
 <script src="character.js"></script>
