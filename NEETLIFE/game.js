@@ -80,6 +80,72 @@ const things = [];       // interactables: {id, prompt, box:[x0,y0,z0,x1,y1,z1]}
 const solid = (x0, z0, x1, z1) => solids.push([x0, z0, x1, z1]);
 const thing = (id, prompt, b) => things.push({ id, prompt, box: b });
 
+// Bathroom behind the south wall: x 2.0..4.3, z 4.12..6.0
+const BATH = { x0: 2.0, x1: 4.3, z0: 4.12, z1: 6.0 };
+// Player settings (per browser, not per save)
+const SETTINGS_KEY = 'neetlife_settings_v1';
+const settings = Object.assign({ mirror: 'full' }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
+const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} };
+const BATH_G = { pos: [], nor: [], col: [], glow: [] }, DOORFILL_G = { pos: [], nor: [], col: [], glow: [] };   // bathroom geometry lives in its own mesh so "partial" mirrors can reflect just it
+// full-length mirror on the bathroom's west wall (glass faces +x)
+const MIRROR = { x: 2.045, z0: 4.5, z1: 5.2, y0: 0.18, y1: 1.92, stand: { x: 3.0, z: 4.85, yaw: Math.PI / 2 } };
+const MIRROR_G = { pos: [], nor: [], col: [], glow: [] };
+function buildBathroom(T) {
+  const { x0, x1, z0, z1 } = BATH, H = ROOM.h;
+  // floor tiles + ceiling
+  for (let i = 0; x0 + i * 0.3 < x1; i++) for (let j = 0; z0 + j * 0.3 < z1; j++) {
+    const w = Math.min(0.3, x1 - (x0 + i * 0.3)), d = Math.min(0.3, z1 - (z0 + j * 0.3));
+    box(x0 + i * 0.3, -0.1, z0 + j * 0.3, w, 0.1, d, (i + j) % 2 ? '#d8dde2' : '#eef1f3');
+  }
+  // everything starts at z0 (behind the living-room wall), never at ROOM.d: faces at z = ROOM.d
+  // would sit on top of the living-room wall face and z-fight through it as pale stripes
+  box(x0, H, z0, x1 - x0, 0.1, z1 - z0, '#eceae4');
+  // walls (west, east, south) + tiled lower half
+  box(x0 - T, 0, z0, T, H, z1 - z0 + T, '#e4ebee', 0, 'n');
+  box(x1, 0, z0, T, H, z1 - z0 + T, '#e4ebee', 0, 'n');
+  box(x0, 0, z1, x1 - x0, H, T, '#e4ebee');
+  for (const [a, b] of [[x0, 2.6], [3.4, x1]]) box(a, 0, z0 + 0.001, b - a, H, 0.002, '#e4ebee', 0, 'nwetb'); // north wall, inside face
+  box(2.6, 2.1, z0 + 0.001, 0.8, H - 2.1, 0.002, '#e4ebee', 0, 'nwetb');
+  intoGeometry(DOORFILL_G, () => { box(2.62, 0, z0 - 0.06, 0.76, 2.08, 0.06, '#efe8da'); prism(2.7, 1.0, z0 + 0.0, 0.03, 0.03, '#bbbbbb', 6); });
+  box(x0, 0, z0, 0.012, 1.15, z1 - z0, '#e6eef2'); box(x1 - 0.012, 0, z0, 0.012, 1.15, z1 - z0, '#e6eef2');
+  box(x0, 0, z1 - 0.012, x1 - x0, 1.15, 0.012, '#e6eef2');
+  box(x0, 0, z0, 0.6, 1.15, 0.012, '#e6eef2'); box(3.4, 0, z0, x1 - 3.4, 1.15, 0.012, '#e6eef2');
+  for (const [a, b] of [[x0, 2.6], [3.4, x1]]) box(a, 1.15, z0, b - a, 0.03, 0.02, '#9fb4c0'); // tile trim (not across the doorway)
+  box(x0, 1.15, z0, 0.02, 0.03, z1 - z0, '#9fb4c0'); box(x1 - 0.02, 1.15, z0, 0.02, 0.03, z1 - z0, '#9fb4c0'); box(x0, 1.15, z1 - 0.02, x1 - x0, 0.03, 0.02, '#9fb4c0');
+  // full-length mirror: wooden frame; the glass is a separate mesh (MIRROR_G) so it can hold the reflection
+  const M = MIRROR;
+  box(x0, M.y0 - 0.05, M.z0 - 0.05, 0.04, M.y1 - M.y0 + 0.1, M.z1 - M.z0 + 0.1, '#6b4a33');
+  intoGeometry(MIRROR_G, () => box(M.x - 0.004, M.y0, M.z0, 0.004, M.y1 - M.y0, M.z1 - M.z0, '#7d8790', 0, 'nwstb'));
+  thing('mirror', 'Full-length mirror (change your look)', [x0, M.y0, M.z0, x0 + 0.25, M.y1, M.z1]);
+  // shower (east side): tray, walls, curtain, rod, head
+  box(3.45, 0, 5.1, x1 - 3.45, 0.1, z1 - 5.1, '#f4f6f7');
+  box(3.47, 0.1, 5.12, x1 - 3.49, 0.005, z1 - 5.14, '#c9d3d9');
+  box(3.45, 2.02, 5.08, x1 - 3.45, 0.025, 0.025, '#b8bec4');
+  box(3.6, 0.32, 5.085, x1 - 3.62, 1.7, 0.012, '#4fb3a9');              // curtain, half drawn
+  for (let k = 0; k < 6; k++) box(3.62 + k * 0.11, 0.32, 5.083, 0.02, 1.7, 0.016, '#45a196');
+  box(x1 - 0.06, 1.85, 5.5, 0.06, 0.04, 0.04, '#b8bec4'); prism(x1 - 0.1, 1.82, 5.52, 0.05, 0.03, '#d0d5da', 8);
+  solid(3.45, 5.1, x1, z1);
+  thing('shower', 'Take a shower', [3.45, 0, 5.05, x1, 2.0, z1]);
+  // toilet (south wall, west)
+  box(2.17, 0, 5.55, 0.3, 0.38, 0.32, '#f6f6f4'); box(2.13, 0.38, 5.5, 0.38, 0.05, 0.4, '#ffffff');
+  box(2.12, 0.38, 5.86, 0.4, 0.42, 0.14, '#f6f6f4'); box(2.16, 0.8, 5.85, 0.32, 0.03, 0.15, '#ececea');
+  box(2.47, 0.72, 5.9, 0.04, 0.02, 0.02, '#c0c0c0');
+  solid(2.1, 5.48, 2.55, z1);
+  thing('toilet', 'Toilet', [2.1, 0, 5.45, 2.55, 0.85, z1]);
+  // vanity + sink + medicine cabinet (south wall, middle)
+  box(2.65, 0, 5.62, 0.66, 0.8, 0.38, '#7a5a42'); box(2.63, 0.8, 5.6, 0.7, 0.04, 0.4, '#e9e9e6');
+  box(2.78, 0.82, 5.68, 0.4, 0.03, 0.26, '#b9c3c9'); prism(2.98, 0.84, 5.93, 0.015, 0.16, '#c0c0c0', 6);
+  box(2.75, 1.25, z1 - 0.1, 0.46, 0.55, 0.1, '#f0efe9'); box(2.78, 1.28, z1 - 0.105, 0.4, 0.49, 0.006, '#a8b4bd');
+  solid(2.6, 5.58, 3.35, z1);
+  thing('sink', 'Sink', [2.6, 0, 5.55, 3.35, 1.0, z1]);
+  // towel rack (east wall) + bath mat + ceiling light + light switch
+  box(x1 - 0.05, 1.25, 4.35, 0.04, 0.02, 0.42, '#c0c0c0');
+  box(x1 - 0.06, 0.7, 4.38, 0.03, 0.56, 0.36, '#e07a3a');
+  box(3.5, 0.001, 4.8, 0.6, 0.01, 0.26, '#3a7fb0');
+  prism(3.15, H - 0.05, 5.05, 0.18, 0.05, '#ddd', 10); prism(3.15, H - 0.1, 5.05, 0.15, 0.05, '#fff6dc', 10, GLOW.BATHCEIL);
+  box(2.42, 1.15, z0, 0.08, 0.12, 0.02, '#f4f0e6');
+  thing('bathswitch', () => S.bathLight === false ? 'Turn the bathroom light on' : 'Turn the bathroom light off', [2.36, 1.0, z0, 2.56, 1.4, z0 + 0.14]);
+}
 function buildRoom() {
   const T = 0.12; // wall thickness
   const wall = '#d9cfbd', wall2 = '#cfc4b0', trim = '#efe8da';
@@ -120,10 +186,9 @@ function buildRoom() {
   box(0.95, 1.55, ROOM.d - 0.05, 0.1, 0.03, 0.02, '#c9c9c9'); // peephole plate
   box(0.75, 0.4, ROOM.d - 0.06, 0.5, 0.12, 0.03, '#a8a8a8');   // mail slot
   thing('door', 'Front door', [0.55, 0, ROOM.d - 0.15, 1.45, 2.1, ROOM.d]);
-  // bathroom door
-  box(2.62, 0, ROOM.d - 0.03, 0.76, 2.08, 0.06, '#efe8da');
-  prism(3.3, 1.0, ROOM.d - 0.07, 0.03, 0.03, '#bbbbbb', 6);
-  thing('bath', 'Bathroom', [2.6, 0, ROOM.d - 0.15, 3.4, 2.1, ROOM.d]);
+  // bathroom door (drawn each frame: it swings open) + the bathroom itself
+  thing('bath', () => S.bathDoor ? 'Close the bathroom door' : 'Open the bathroom door', [2.6, 0, ROOM.d - 0.15, 3.4, 2.1, ROOM.d + 0.15]);
+  intoGeometry(BATH_G, () => buildBathroom(T));
   // baseboards
   box(0, 0, 0, ROOM.w, 0.08, 0.02, trim); box(0, 0, 0, 0.02, 0.08, ROOM.d, trim); box(ROOM.w - 0.02, 0, 0, 0.02, 0.08, ROOM.d, trim);
 
@@ -237,14 +302,27 @@ function buildRoom() {
 // WebGL renderer
 // =====================================================================
 const canvas = $('gl');
-const gl = canvas.getContext('webgl', { antialias: true }) || canvas.getContext('experimental-webgl');
+const gl = canvas.getContext('webgl', { antialias: true, stencil: true }) || canvas.getContext('experimental-webgl', { stencil: true });
 let prog, attr = {}, uni = {}, vertCount = 0, burnerGlow = [0.2, 0.2, 0.2];
+function drawCoreDynamic() {
+  if (settings.mirror === 'simple') {
+    const M = MIRROR, x = M.x + 0.001;
+    box(x, M.y0, M.z0, 0.002, M.y1 - M.y0, M.z1 - M.z0, '#a9bcc8', 0, 'nwstb');            // brighter glass
+    for (const [z0, w, y0, len] of [[M.z0 + 0.12, 0.05, 1.05, 0.75], [M.z0 + 0.26, 0.022, 0.95, 0.55], [M.z0 + 0.46, 0.035, 0.3, 0.6]])
+      for (let k = 0; k < 10; k++) box(x + 0.001, y0 + k * len / 10, z0 + k * 0.012, 0.002, len / 10, w, '#eef5f9', 0, 'nwstb'); // diagonal shine
+  }
+  box(1.575, S.lightOn ? 1.215 : 1.175, ROOM.d - 0.035, 0.03, 0.03, 0.02, '#e2ddd0'); // light switch toggle
+  box(2.445, S.bathLight === false ? 1.175 : 1.215, BATH.z0 + 0.02, 0.03, 0.03, 0.02, '#e2ddd0'); // bathroom switch
+  // bathroom door: closed in the doorway, or swung into the bathroom on its hinge at x 3.38
+  if (S.bathDoor) { box(3.33, 0, BATH.z0, 0.05, 2.08, 0.76, '#efe8da'); prism(3.31, 1.0, BATH.z0 + 0.68, 0.03, 0.03, '#bbbbbb', 6); }
+  else { box(2.62, 0, ROOM.d - 0.03, 0.76, 2.08, 0.06, '#efe8da'); prism(2.7, 1.0, ROOM.d - 0.07, 0.03, 0.03, '#bbbbbb', 6); prism(2.7, 1.0, ROOM.d + 0.07, 0.03, 0.03, '#bbbbbb', 6); }
+}
 // Environment knobs (weather.js writes these every frame). glow[] holds colours for glow groups 6..11.
-const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {} };
+const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {}, selfVisible: false };
 // Glow groups: 1 sky, 2 monitor, 3 ceiling bulb, 4 lamp, 5 burner, 6 sun/moon, 7 stars, 8 city lights, 9 clouds, 10 rain, 11 lightning
-const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11 };
+const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12 };
 // module hooks (cooking.js etc. register into these)
-const hooks = { interact: [], update: [], draw: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [] };
+const hooks = { interact: [], update: [], draw: [], drawSelf: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [] };
 // the active camera: first person by default; modules (character.js) may return {x,y,z,yaw,pitch,reach}
 function getCamera() { let c = null; for (const fn of hooks.camera) c = fn() || c; return c; }
 const VS = `
@@ -257,32 +335,37 @@ precision mediump float;
 varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
 uniform vec3 uAmbSky; uniform vec3 uAmbGround;
 uniform vec3 uLP[4]; uniform vec3 uLC[4];
-uniform vec3 uGlow[12];
+uniform vec3 uGlow[14];
+uniform vec4 uClip; uniform float uTint;
 uniform vec3 uWinPos; uniform vec3 uWinCol;
 uniform vec3 uSunDir; uniform vec3 uSunCol;
 // window opening on the north wall (z = 0): x 1.25..2.35, y 1.0..2.0, mullions at the centre lines
 const vec4 WIN = vec4(1.25, 2.35, 1.0, 2.0);
 void main() {
+  if (dot(vPos, uClip.xyz) + uClip.w < 0.0) discard;
   if (vGlow > 0.5) {
     vec3 g = vec3(1.0);
-    for (int i = 1; i < 12; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
-    gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25), 1.0); return;
+    for (int i = 1; i < 14; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
+    gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25) * uTint, 1.0); return;
   }
   vec3 n = normalize(vNor);
   vec3 amb = mix(uAmbGround, uAmbSky, n.y * 0.5 + 0.5);
   // fake ambient occlusion: darker near floor and in corners
   float ao = 0.72 + 0.28 * smoothstep(0.0, 0.9, vPos.y);
-  vec3 lit = amb * ao;
+  // the bathroom (z > 4.08) has no window: dim ambient, and lights mostly stay in their own room
+  float inBath = step(4.08, vPos.z);
+  vec3 lit = amb * ao * mix(1.0, 0.55, inBath);
   for (int i = 0; i < 4; i++) {
     vec3 L = uLP[i] - vPos; float d = length(L); L /= d;
     float wrap = max(dot(n, L) * 0.8 + 0.2, 0.0);
-    lit += uLC[i] * wrap / (1.0 + 0.9 * d * d);
+    float room = i < 3 ? mix(1.0, 0.1, inBath) : mix(0.06, 1.0, inBath);
+    lit += uLC[i] * wrap * room / (1.0 + 0.9 * d * d);
   }
   // window light: a soft area light from the north wall
   vec3 W = uWinPos - vPos; float wd = length(W); W /= wd;
-  lit += uWinCol * max(dot(n, W), 0.0) / (1.0 + 0.6 * wd * wd);
+  lit += uWinCol * max(dot(n, W), 0.0) * (1.0 - inBath) / (1.0 + 0.6 * wd * wd);
   // direct sun: trace from this point toward the sun; lit if the ray leaves through the window glass
-  if (uSunDir.z < -0.01 && vPos.z > 0.001) {
+  if (uSunDir.z < -0.01 && vPos.z > 0.001 && vPos.z < 4.0) {
     float t = -vPos.z / uSunDir.z;
     vec3 q = vPos + uSunDir * t;
     if (q.x > WIN.x && q.x < WIN.y && q.y > WIN.z && q.y < WIN.w) {
@@ -293,7 +376,7 @@ void main() {
   }
   vec3 c = vCol * lit;
   c = c / (1.0 + c * 0.35);                 // soft tone map
-  gl_FragColor = vec4(pow(c, vec3(0.92)), 1.0);
+  gl_FragColor = vec4(pow(c, vec3(0.92)) * uTint, 1.0);
 }`;
 function compile(type, src) {
   const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
@@ -302,7 +385,7 @@ function compile(type, src) {
 }
 const ATTRS = [['aPos', 3], ['aNor', 3], ['aCol', 3], ['aGlow', 1]];
 const KEYS = { aPos: 'pos', aNor: 'nor', aCol: 'col', aGlow: 'glow' };
-let staticBufs, dynBufs;
+let staticBufs, dynBufs, selfBufs, mirrorBufs, bathBufs, doorFillBufs;
 function makeBufs(geo, usage) {
   const o = {};
   for (const [name] of ATTRS) { o[name] = gl.createBuffer(); if (geo) { gl.bindBuffer(gl.ARRAY_BUFFER, o[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geo[KEYS[name]]), usage); } }
@@ -321,8 +404,12 @@ function initGL() {
   for (const [name, size] of ATTRS) { attr[name] = { loc: gl.getAttribLocation(prog, name), size }; gl.enableVertexAttribArray(attr[name].loc); }
   staticBufs = makeBufs(STATIC_G, gl.STATIC_DRAW);
   dynBufs = makeBufs(null, gl.DYNAMIC_DRAW);
+  selfBufs = makeBufs(null, gl.DYNAMIC_DRAW);
+  mirrorBufs = makeBufs(MIRROR_G, gl.STATIC_DRAW);
+  bathBufs = makeBufs(BATH_G, gl.STATIC_DRAW);
+  doorFillBufs = makeBufs(DOORFILL_G, gl.STATIC_DRAW);
   vertCount = STATIC_G.pos.length / 3;
-  for (const n of ['uVP', 'uAmbSky', 'uAmbGround', 'uGlow', 'uWinPos', 'uWinCol', 'uSunDir', 'uSunCol']) uni[n] = gl.getUniformLocation(prog, n);
+  for (const n of ['uVP', 'uAmbSky', 'uAmbGround', 'uGlow', 'uWinPos', 'uWinCol', 'uSunDir', 'uSunCol', 'uClip', 'uTint']) uni[n] = gl.getUniformLocation(prog, n);
   uni.uLP = gl.getUniformLocation(prog, 'uLP'); uni.uLC = gl.getUniformLocation(prog, 'uLC');
   gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK);
 }
@@ -367,8 +454,8 @@ function render() {
   const aspect = canvas.width / canvas.height;
   const bob = Math.sin(P.bob) * 0.025;
   const cam = getCamera();
-  const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), cam ? M4.view(cam.x, cam.y, cam.z, cam.yaw, cam.pitch) : M4.view(P.x, P.y + bob, P.z, P.yaw, P.pitch));
-  gl.uniformMatrix4fv(uni.uVP, false, vp);
+  const eye = cam || { x: P.x, y: P.y + bob, z: P.z, yaw: P.yaw, pitch: P.pitch };
+  const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), M4.view(eye.x, eye.y, eye.z, eye.yaw, eye.pitch));
   // weather: clouds grey out and darken the sky; lightning flashes everything
   const cl = env.cloud, fl = env.flash;
   const lum = sky[0] * 0.3 + sky[1] * 0.55 + sky[2] * 0.15;
@@ -382,12 +469,13 @@ function render() {
   // lights: ceiling + bedside lamp (switchable; storms can flicker the power), monitor glow
   const ceilOn = S.lightOn ? env.power : 0, lampOn = S.lampOn === false ? 0 : env.power;
   const mon = pcOpen ? [0.45, 0.6, 1.0] : [0.25, 0.35, 0.7];
-  gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, 1.29, 0.95, 0.25, 3.45, 1.15, 0.45, 4.2, 1.0, 3.05]);
+  const bathOn = S.bathLight === false ? 0 : env.power;
+  gl.uniform3fv(uni.uLP, [2.5, 2.35, 2.0, 1.29, 0.95, 0.25, 3.45, 1.15, 0.45, 3.15, 2.4, 5.05]);
   gl.uniform3fv(uni.uLC, [
     1.25 * ceilOn, 1.12 * ceilOn, 0.92 * ceilOn,
     0.55 * lampOn, 0.42 * lampOn, 0.25 * lampOn,
     mon[0] * 0.5 * env.power, mon[1] * 0.5 * env.power, mon[2] * 0.5 * env.power,
-    0, 0, 0,
+    1.9 * bathOn, 1.85 * bathOn, 1.75 * bathOn,
   ]);
   gl.uniform3fv(uni.uWinPos, [1.8, 1.5, -0.4]);
   gl.uniform3fv(uni.uWinCol, skyC.map((v, i) => v * (0.25 + 1.4 * dayK) + fl * 1.6));
@@ -395,27 +483,54 @@ function render() {
   const sun = sunState(h);
   gl.uniform3fv(uni.uSunDir, sun.dir);
   gl.uniform3fv(uni.uSunCol, sun.col.map(v => v * sun.k * Math.pow(1 - cl, 2.2)));
-  const glow = new Array(36).fill(0);
+  const glow = new Array(42).fill(0);
   const setG = (i, c) => { glow[i * 3] = c[0]; glow[i * 3 + 1] = c[1]; glow[i * 3 + 2] = c[2]; };
   setG(GLOW.SKY, skyC.map(v => Math.min(1, v * 1.15)));
   setG(GLOW.MONITOR, (internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]).map(v => v * (0.2 + 0.8 * env.power)));
   setG(GLOW.CEIL, ceilOn ? [1.0, 0.96, 0.85] : [0.45, 0.43, 0.4].map(v => v * (0.4 + dayK)));
   setG(GLOW.LAMP, lampOn ? [1.0, 0.82, 0.55] : [0.5, 0.42, 0.32].map(v => v * (0.4 + dayK)));
   setG(GLOW.BURNER, burnerGlow);
+  setG(GLOW.BATHCEIL, bathOn ? [1.0, 0.98, 0.92] : [0.4, 0.4, 0.38]);
   for (const [k, c] of Object.entries(env.glow)) setG(+k, c);
   gl.uniform3fv(uni.uGlow, glow);
-  bindBufs(staticBufs);
-  gl.drawArrays(gl.TRIANGLES, 0, vertCount);
-  // dynamic objects (food, held items, smoke...) are rebuilt every frame by modules
-  const D = { pos: [], nor: [], col: [], glow: [] };
-  intoGeometry(D, () => {
-    box(1.575, S.lightOn ? 1.215 : 1.175, ROOM.d - 0.035, 0.03, 0.03, 0.02, '#e2ddd0'); // switch toggle
-    for (const fn of hooks.draw) fn();
-  });
-  if (D.pos.length) {
-    for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, dynBufs[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(D[KEYS[name]]), gl.DYNAMIC_DRAW); }
-    bindBufs(dynBufs);
-    gl.drawArrays(gl.TRIANGLES, 0, D.pos.length / 3);
+  // geometry rebuilt every frame: the world's moving bits (D) and the player model (SELF)
+  const D = { pos: [], nor: [], col: [], glow: [] }, SELF = { pos: [], nor: [], col: [], glow: [] };
+  intoGeometry(D, () => { drawCoreDynamic(); for (const fn of hooks.draw) fn(); });
+  intoGeometry(SELF, () => { for (const fn of hooks.drawSelf) fn(); });
+  const upload = (bufs, geo) => { for (const [name] of ATTRS) { gl.bindBuffer(gl.ARRAY_BUFFER, bufs[name]); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geo[KEYS[name]]), gl.DYNAMIC_DRAW); } };
+  if (D.pos.length) upload(dynBufs, D);
+  if (SELF.pos.length) upload(selfBufs, SELF);
+  // partial = only the bathroom and yourself (the cheap reflection)
+  const drawWorld = (withSelf, partial) => {
+    if (!partial) { bindBufs(staticBufs); gl.drawArrays(gl.TRIANGLES, 0, vertCount); }
+    bindBufs(bathBufs); gl.drawArrays(gl.TRIANGLES, 0, BATH_G.pos.length / 3);
+    if (!partial && D.pos.length) { bindBufs(dynBufs); gl.drawArrays(gl.TRIANGLES, 0, D.pos.length / 3); }
+    if (withSelf && SELF.pos.length) { bindBufs(selfBufs); gl.drawArrays(gl.TRIANGLES, 0, SELF.pos.length / 3); }
+  };
+  // 1) the normal view (a camera may carry a clip plane, e.g. the "simple" mirror view looking out of the glass)
+  gl.uniformMatrix4fv(uni.uVP, false, vp);
+  gl.uniform4fv(uni.uClip, eye.clip || [0, 0, 0, 1]); gl.uniform1f(uni.uTint, 1);
+  drawWorld(env.selfVisible, !!eye.bathOnly);
+  if (eye.bathOnly) { bindBufs(doorFillBufs); gl.drawArrays(gl.TRIANGLES, 0, DOORFILL_G.pos.length / 3); }
+  if (!eye.clip) { bindBufs(mirrorBufs); gl.drawArrays(gl.TRIANGLES, 0, MIRROR_G.pos.length / 3); }
+  // 2) the mirror: mark the visible glass in the stencil, reset its depth, then draw the scene reflected across x = MIRROR.x
+  const seesMirror = settings.mirror !== 'simple' && !eye.clip && eye.x > MIRROR.x + 0.05 && (eye.z > BATH.z0 || (S.bathDoor && eye.z > 2.2));
+  if (seesMirror) {
+    gl.enable(gl.STENCIL_TEST);
+    gl.stencilFunc(gl.ALWAYS, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+    gl.colorMask(false, false, false, false); gl.depthMask(false); gl.depthFunc(gl.LEQUAL);
+    gl.drawArrays(gl.TRIANGLES, 0, MIRROR_G.pos.length / 3);
+    gl.stencilFunc(gl.EQUAL, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+    gl.depthMask(true); gl.depthFunc(gl.ALWAYS); gl.depthRange(1, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, MIRROR_G.pos.length / 3);
+    gl.depthRange(0, 1); gl.depthFunc(gl.LESS); gl.colorMask(true, true, true, true);
+    const R = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2 * MIRROR.x, 0, 0, 1];
+    gl.uniformMatrix4fv(uni.uVP, false, M4.mul(vp, R));
+    gl.uniform4fv(uni.uClip, [1, 0, 0, -(MIRROR.x + 0.006)]); gl.uniform1f(uni.uTint, 0.9);
+    gl.frontFace(gl.CW);
+    drawWorld(true, settings.mirror === 'partial');
+    gl.frontFace(gl.CCW);
+    gl.disable(gl.STENCIL_TEST);
   }
 }
 
@@ -431,14 +546,21 @@ let lockFailed = false, dragging = false;
 let modalOpen = false;
 const active = () => started && !paused && !pcOpen && !modalOpen && !sleeping && S && !S.evicted;
 
+// is a point inside the walkable space? (m = margin from walls)
+function walkable(x, z, m) {
+  if (x > m && x < ROOM.w - m && z > m && z < ROOM.d - m) return true;
+  if (S && S.bathDoor && x > 2.62 + m && x < 3.38 - m && z > 3.5 && z < 4.6) return true;
+  return x > BATH.x0 + m && x < BATH.x1 - m && z > BATH.z0 + m && z < BATH.z1 - m;
+}
 function collide(nx, nz) {
   const r = P.r;
-  nx = Math.max(r, Math.min(ROOM.w - r, nx)); nz = Math.max(r, Math.min(ROOM.d - r, nz));
+  if (!walkable(nx, nz, r) && walkable(P.x, P.z, r)) return null;
   const inside = (x, z, [x0, z0, x1, z1]) => x > x0 - r && x < x1 + r && z > z0 - r && z < z1 + r;
   for (const s of solids) {
     // only block if the step enters furniture; if we're already overlapping (bad spawn/old save), let us walk out
     if (inside(nx, nz, s) && !inside(P.x, P.z, s)) return null;
   }
+  if (S && S.bathDoor && nx > 3.33 - r && nx < 3.38 + r && nz > BATH.z0 && nz < BATH.z0 + 0.76 + r && !(P.x > 3.33 - r && P.x < 3.38 + r && P.z > BATH.z0 && P.z < BATH.z0 + 0.76 + r)) return null; // the open door
   return [nx, nz];
 }
 function movePlayer(dt) {
@@ -474,6 +596,11 @@ function pick() {
       if (t0 > t1) { ok = false; break; }
     }
     if (ok && t0 < bt) {
+      const crossZ = 4.06, ez = o[2] + d[2] * t0;
+      if ((o[2] - crossZ) * (ez - crossZ) < 0 && th.id !== 'bath') {   // the ray passes the wall between the rooms
+        const tc = (crossZ - o[2]) / d[2], cx = o[0] + d[0] * tc;
+        if (!S.bathDoor || cx < 2.62 || cx > 3.38) continue;
+      }
       if (cam.reach) { const hx = o[0] + d[0] * t0 - P.x, hz = o[2] + d[2] * t0 - P.z; if (Math.hypot(hx, hz) > 2.0) continue; }
       bt = t0; best = th;
     }
@@ -545,7 +672,7 @@ function freshState() {
   return {
     t: 8 * 60,             // minutes since Day 1 00:00
     money: START_MONEY,
-    lightOn: true, lampOn: true,
+    lightOn: true, lampOn: true, bathLight: true, bathDoor: false,
     bills: Object.entries(BILL_DEFS).map(([id, d]) => ({ id, due: d.firstDue, paid: false, late: false })),
     tx: [{ t: 8 * 60, desc: 'Opening balance', amt: START_MONEY }],
     stats: { runs: 0, wins: 0, busts: 0, best: 0, wagered: 0, won: 0 },
@@ -648,7 +775,8 @@ function showScreen(id) { for (const s of document.querySelectorAll('.screen')) 
 let hovered = null;
 const QUIPS = {
   door: ['You peek through the peephole. The hallway is empty. Outside can wait.', 'You put your hand on the doorknob, then think better of it.', 'There might be people out there. Hard pass.'],
-  bath: ['The bathroom. You were just in there. Probably.', 'The shower drips. You make a mental note to call the landlord. You won\'t.'],
+  toilet: ['You use the toilet. Riveting content.', 'You sit and scroll your phone for twenty minutes. Classic.', 'Flushed. The pipes groan ominously.'],
+  sink: ['You wash your hands. Look at you, being hygienic.', 'The tap sputters, then gives up and runs normally.', 'You splash water on your face. Still you.'],
   fridge: ['One energy drink, half a lemon and a mystery container. Living the dream.', 'The fridge hums at you judgementally.'],
 };
 let clickCtx = null;
@@ -664,6 +792,14 @@ function interact(id) {
   if (paused || sleeping) return;
   for (const fn of hooks.interact) if (fn(id)) return;
   if (id === 'switch') { S.lightOn = !S.lightOn; clickSound(); save(); return; }
+  if (id === 'bathswitch') { S.bathLight = S.bathLight === false; clickSound(); save(); return; }
+  if (id === 'bath') {
+    if (S.bathDoor && P.x > 3.33 - P.r - 0.02 && P.x < 3.4 + P.r && P.z > BATH.z0 - 0.05 && P.z < BATH.z0 + 0.8 + P.r) { toast("You're standing in the way of the door."); return; }
+    if (S.bathDoor && !walkable(P.x, P.z, 0) ) { toast("Step out of the doorway first."); return; }
+    if (S.bathDoor && P.x > 2.62 && P.x < 3.38 && P.z > 3.75 && P.z < 4.4) { toast("Step out of the doorway first."); return; }
+    S.bathDoor = !S.bathDoor; doorSound(S.bathDoor); save(); return;
+  }
+  if (id === 'shower') return shower();
   if (id === 'lamp') { S.lampOn = S.lampOn === false; clickSound(); save(); return; }
   if (id === 'pc') return openPC();
   if (id === 'bed') return sleep();
@@ -676,6 +812,25 @@ function interact(id) {
     if (!r.paid && r.late) return toast('A notice is taped to the door: "PAY YOUR RENT OR GET OUT." — Management', 'bad', 6000);
   }
   const q = QUIPS[id]; if (q) toast(q[Math.floor(Math.random() * q.length)]);
+}
+function shower() {
+  sleeping = true;
+  document.exitPointerLock && document.exitPointerLock();
+  const fade = $('fade'); fade.textContent = 'Splish splash…'; fade.classList.add('on');
+  setTimeout(() => {
+    advance(15); updateHUD(); save();
+    fade.classList.remove('on'); sleeping = false;
+    if (!S.evicted) { toast(['Fresh as a daisy. A daisy that gambles.', 'You emerge from the steam a new person. Same bills though.', 'The hot water ran out halfway. Typical.'][Math.floor(Math.random() * 3)]); lockPointer(); }
+  }, 1300);
+}
+function doorSound(open) {
+  try {
+    clickCtx = clickCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const a = clickCtx, o = a.createOscillator(), gn = a.createGain();
+    o.type = 'triangle'; o.frequency.setValueAtTime(open ? 220 : 160, a.currentTime); o.frequency.exponentialRampToValueAtTime(open ? 120 : 90, a.currentTime + 0.18);
+    gn.gain.setValueAtTime(0.06, a.currentTime); gn.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.22);
+    o.connect(gn).connect(a.destination); o.start(); o.stop(a.currentTime + 0.25);
+  } catch (e) {}
 }
 function sleep() {
   const h = (S.t / 60) % 24;
@@ -833,7 +988,7 @@ function renderTitle() {
   const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; box.appendChild(b); };
   if (saved && !saved.evicted) mk(`Continue · Day ${dayOf(saved.t)} · ${money(saved.money)}`, '', () => begin(saved));
   mk(saved && !saved.evicted ? 'New life' : 'Start', saved && !saved.evicted ? 'ghost' : '', newLife);
-  if (window.neetDesktop) { mk('Fullscreen (F11)', 'ghost', () => window.neetDesktop.toggleFullscreen()); mk('Quit to desktop', 'ghost', () => { save(); window.neetDesktop.quit(); }); }
+  mk('Settings', 'ghost', () => openSettings('scTitle'));
 }
 function newLife() { if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
 function begin(saved) {
@@ -847,13 +1002,6 @@ function begin(saved) {
   if (!saved) setTimeout(() => toast('Your PC is on the desk. Rent is due Sunday.', '', 6000), 600);
 }
 $('btnResume').onclick = () => lockPointer();
-// desktop app (Electron): quit button on the pause screen too
-if (window.neetDesktop) {
-  const q = document.createElement('button'); q.className = 'btn ghost'; q.textContent = 'Quit to desktop';
-  q.onclick = () => { save(); window.neetDesktop.quit(); };
-  $('btnQuitTitle').after(q);
-  $('mobileNote').remove();
-}
 $('btnQuitTitle').onclick = () => { save(); started = false; paused = true; renderTitle(); showScreen('scTitle'); };
 $('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} newLife(); };
 
@@ -886,9 +1034,35 @@ renderTitle();
 window.addEventListener('beforeunload', save);
 requestAnimationFrame(frame);
 
+// ---- settings screen ----
+const settingsEl = document.createElement('div');
+settingsEl.className = 'screen'; settingsEl.id = 'scSettings';
+document.body.appendChild(settingsEl);
+let settingsBack = 'scTitle';
+const MIRROR_OPTS = [
+  ['full', 'Full', 'Reflects everything: you, the bathroom, the room through the door, the weather. Looks best, costs the most.'],
+  ['partial', 'Partial', 'Reflects only you and the bathroom. Much lighter on slower computers.'],
+  ['simple', 'Simple', 'No real reflection, just a shiny surface. Fastest. At the mirror you see yourself through the glass instead.'],
+];
+function renderSettings() {
+  settingsEl.innerHTML = `<div class="card" style="text-align:left;max-width:520px">
+    <h2 style="margin:0 0 4px;text-align:center">Settings</h2>
+    <p style="text-align:center;margin-top:0">Saved in this browser.</p>
+    <b style="display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">Mirror reflections</b>
+    ${MIRROR_OPTS.map(([v, l, d]) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;cursor:pointer;margin-bottom:6px;
+        background:${settings.mirror === v ? 'var(--panel2)' : 'transparent'};border:1px solid ${settings.mirror === v ? 'var(--accent)' : 'var(--line)'}">
+        <input type="radio" name="mirrorOpt" value="${v}" ${settings.mirror === v ? 'checked' : ''} style="margin-top:3px;accent-color:#ffcf5a">
+        <span><b>${l}</b><br><span style="color:var(--muted);font-size:13px">${d}</span></span></label>`).join('')}
+    <div style="text-align:center;margin-top:14px"><button class="btn" id="btnSettingsBack">Back</button></div></div>`;
+  settingsEl.querySelectorAll('input[name=mirrorOpt]').forEach(r => r.onchange = () => { settings.mirror = r.value; saveSettings(); renderSettings(); });
+  $('btnSettingsBack').onclick = () => showScreen(settingsBack);
+}
+function openSettings(from) { settingsBack = from; renderSettings(); showScreen('scSettings'); }
+{ const b = document.createElement('button'); b.className = 'btn ghost'; b.textContent = 'Settings'; b.onclick = () => openSettings('scPause'); $('btnQuitTitle').before(b); }
+
 // ---- module API (see cooking.js) ----
 window.NEET = {
-  hooks, box, prism, quad, thing, things, env, begin, showScreen, renderTitle, lockPointer,
+  hooks, box, prism, quad, thing, things, env, MIRROR, BATH, walkable, settings, begin, showScreen, renderTitle, lockPointer,
   get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC,
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },

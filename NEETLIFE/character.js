@@ -390,7 +390,7 @@ function drawHair(ch, HY, HW, HH, HD, hc) {
 // ---------------------------------------------------------------------
 // Third person
 // ---------------------------------------------------------------------
-let mode = 'play';            // 'play' | 'creator'
+let mode = 'play';            // 'play' | 'creator' (new life, staged in the main room) | 'mirror' (bathroom)
 let walkPhase = 0, lastX = null, lastZ = null, moving = false;
 const third = () => N.S && N.S.view === 'third' && mode === 'play';
 const EYE = () => 1.62 * (HEIGHT[(N.S && N.S.char && N.S.char.height) || 'average'] || 1);
@@ -403,13 +403,14 @@ function thirdCam() {
   let dist = want;
   for (let d = want; d > 0.4; d -= 0.05) {
     const x = P.x - fx * d + rx * SH, z = P.z - fz * d + rz * SH;
-    dist = d; if (x > 0.12 && x < 4.88 && z > 0.12 && z < 3.88) break;
+    dist = d; if (N.walkable(x, z, 0.12)) break;
   }
-  const x = Math.max(0.1, Math.min(4.9, P.x - fx * dist + rx * SH)), z = Math.max(0.1, Math.min(3.9, P.z - fz * dist + rz * SH));
+  let x = P.x - fx * dist + rx * SH, z = P.z - fz * dist + rz * SH;
+  if (!N.walkable(x, z, 0.05)) { x = P.x - fx * 0.3; z = P.z - fz * 0.3; }
   const y = Math.max(0.25, Math.min(2.45, eyeY - fy * dist));
   return { x, y, z, yaw: P.yaw, pitch: P.pitch, reach: dist };
 }
-N.hooks.camera.push(() => mode === 'creator' ? creatorCam() : third() ? thirdCam() : null);
+N.hooks.camera.push(() => mode === 'creator' ? creatorCam() : mode === 'mirror' ? mirrorCam() : third() ? thirdCam() : null);
 N.heldAnchor = () => {
   if (!third()) return null;
   const P = N.P, s = HEIGHT[N.S.char.height] || 1, f = 0.32 * s;
@@ -421,10 +422,17 @@ N.hooks.update.push(dt => {
   if (lastX !== null) { const d = Math.hypot(P.x - lastX, P.z - lastZ); moving = d > 0.0005; if (moving) walkPhase += d * 7.5; }
   lastX = P.x; lastZ = P.z;
 });
-N.hooks.draw.push(() => {
+let lastPose = null;
+function recordDraw(ch, x, z, yaw) {
+  RECORD = []; drawCharacter(ch, x, z, yaw, 0, {}); lastHits = RECORD; RECORD = null;
+  lastPose = { x, z, yaw, sc: HEIGHT[ch.height] || 1 };
+}
+N.hooks.drawSelf.push(() => {
   const S = N.S; if (!S || !S.char) return;
-  if (mode === 'creator') { RECORD = []; drawCharacter(draft, STAGE.x, STAGE.z, stageYaw, 0, {}); lastHits = RECORD; RECORD = null; return; }
-  if (third() && N.started) drawCharacter(S.char, N.P.x, N.P.z, N.P.yaw, walkPhase, { moving, holding: !!(S.kitchen && S.kitchen.held) });
+  N.env.selfVisible = mode === 'creator' || third() || (mode === 'mirror' && N.settings.mirror === 'simple');
+  if (mode === 'creator') return recordDraw(draft, STAGE.x, STAGE.z, stageYaw);
+  if (mode === 'mirror') return recordDraw(draft, N.MIRROR.stand.x, N.MIRROR.stand.z, stageYaw);
+  if (N.started) drawCharacter(S.char, N.P.x, N.P.z, N.P.yaw, walkPhase, { moving, holding: !!(S.kitchen && S.kitchen.held) });
 });
 N.hooks.key.push(code => {
   if (code === 'KeyV') { N.S.view = third() ? 'first' : 'third'; N.toast(N.S.view === 'third' ? 'Third person (press V to switch back).' : 'First person.', '', 2000); N.save(); }
@@ -435,6 +443,13 @@ N.hooks.key.push(code => {
 // ---------------------------------------------------------------------
 const STAGE = { x: 3.05, z: 1.5 };
 let stageYaw = Math.PI, draft = { ...DEFAULT }, onDone = null, dragX = null;
+// in front of the bathroom mirror: just behind your own head, looking at the glass
+function mirrorCam() {
+  const st = N.MIRROR.stand, s = HEIGHT[draft.height] || 1;
+  // "simple" mirrors don't reflect: look back at you from beyond the glass (everything behind it is clipped away)
+  if (N.settings.mirror === 'simple') return { x: st.x - 1.72, y: 1.02 * s, z: st.z - 0.26, yaw: -Math.PI / 2, pitch: 0.0, clip: [1, 0, 0, -(N.MIRROR.x + 0.01)], bathOnly: true };
+  return { x: st.x + 0.3, y: 1.5 * s, z: st.z + 0.1, yaw: Math.PI / 2 + 0.3, pitch: -0.18 };
+}
 function creatorCam() { const s = HEIGHT[draft.height] || 1; return { x: STAGE.x - 0.62, y: 0.98 * s + 0.02, z: STAGE.z + 2.3, yaw: 0.0, pitch: -0.05 }; }
 
 const css = document.createElement('style');
@@ -543,13 +558,14 @@ function accessoriesHTML() {
 function keepScroll(fn) { const sc = document.getElementById('crBody'), y = sc.scrollTop; fn(); sc.scrollTop = y; }
 
 function openCreator(kind) {
-  mode = 'creator'; stageYaw = Math.PI;
   const isNew = kind === 'new';
+  mode = isNew ? 'creator' : 'mirror'; stageYaw = isNew ? Math.PI : N.MIRROR.stand.yaw;
+  if (!isNew) { const P = N.P, st = N.MIRROR.stand; P.x = st.x; P.z = st.z; P.yaw = st.yaw; P.pitch = -0.1; } // step in front of the mirror
   W = isNew ? null : N.S.wardrobe; armPin = null;
   draft = isNew ? (templates().length ? sanitize(templates()[templates().length - 1].char, null) : randomChar()) : sanitize(N.S.char, W);
   draft.pins = (draft.pins || []).map(p => ({ ...p }));
-  document.getElementById('crTitle').textContent = isNew ? 'Create your character' : 'Bathroom mirror';
-  document.getElementById('crSub').textContent = isNew ? 'Everything is mix and match. Save a template to reuse a look.' : 'Change your look. Nobody will see it anyway.';
+  document.getElementById('crTitle').textContent = isNew ? 'Create your character' : 'Full-length mirror';
+  document.getElementById('crSub').textContent = isNew ? 'Everything is mix and match. Save a template to reuse a look.' : 'Change your look. Click your reflection to place pins.';
   document.getElementById('crDone').textContent = isNew ? 'Start life' : 'Done';
   onDone = isNew
     ? () => { N.begin(null); N.S.char = sanitize(draft, N.S.wardrobe); N.save(); }
@@ -569,10 +585,11 @@ document.getElementById('crL').onclick = () => { stageYaw -= 0.6; };
 document.getElementById('crR').onclick = () => { stageYaw += 0.6; };
 // drag anywhere outside the panel to spin the character
 let dragDist = 0;
-window.addEventListener('pointerdown', e => { if (mode === 'creator' && e.target.tagName === 'CANVAS') { dragX = e.clientX; dragDist = 0; } });
-window.addEventListener('pointermove', e => { if (mode === 'creator' && dragX !== null) { dragDist += Math.abs(e.clientX - dragX); stageYaw += (e.clientX - dragX) * 0.012; dragX = e.clientX; } });
+const editing = () => mode === 'creator' || mode === 'mirror';
+window.addEventListener('pointerdown', e => { if (editing() && e.target.tagName === 'CANVAS') { dragX = e.clientX; dragDist = 0; } });
+window.addEventListener('pointermove', e => { if (editing() && dragX !== null) { dragDist += Math.abs(e.clientX - dragX); stageYaw += (e.clientX - dragX) * 0.012; dragX = e.clientX; } });
 window.addEventListener('pointerup', e => {
-  if (mode === 'creator' && dragX !== null && dragDist < 6 && armPin && e.target.tagName === 'CANVAS') placePinAt(e.clientX, e.clientY);
+  if (editing() && dragX !== null && dragDist < 6 && armPin && e.target.tagName === 'CANVAS') placePinAt(e.clientX, e.clientY);
   dragX = null;
 });
 // cast a ray from the creator camera through the click and find the nearest body box
@@ -580,14 +597,22 @@ function placePinAt(cx, cy) {
   if (pinsLeft(armPin) <= 0) return;
   const cv = document.getElementById('gl'), r = cv.getBoundingClientRect();
   const nx = (cx - r.left) / r.width * 2 - 1, ny = 1 - (cy - r.top) / r.height * 2;
-  const cam = creatorCam(), th = Math.tan(0.6), asp = r.width / r.height;
+  const cam = mode === 'mirror' ? mirrorCam() : creatorCam(), th = Math.tan(0.6), asp = r.width / r.height;
   const cp = Math.cos(cam.pitch), f = [-Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
   const rt = [Math.cos(cam.yaw), 0, -Math.sin(cam.yaw)];
   const up = [rt[1] * f[2] - rt[2] * f[1], rt[2] * f[0] - rt[0] * f[2], rt[0] * f[1] - rt[1] * f[0]];
   const d = [0, 1, 2].map(i => f[i] + rt[i] * nx * th * asp + up[i] * ny * th);
-  const sc = HEIGHT[draft.height] || 1, cy0 = Math.cos(stageYaw), sy0 = Math.sin(stageYaw);
+  let org = [cam.x, cam.y, cam.z];
+  if (mode === 'mirror' && N.settings.mirror !== 'simple') { // the click lands on the glass: reflect the ray back into the room
+    const M = N.MIRROR; if (d[0] >= 0) return;
+    const t = (M.x - org[0]) / d[0], hy = org[1] + d[1] * t, hz = org[2] + d[2] * t;
+    if (hy < M.y0 || hy > M.y1 || hz < M.z0 || hz > M.z1) return;
+    org = [M.x, hy, hz]; d[0] = -d[0];
+  }
+  if (!lastPose) return;
+  const sc = lastPose.sc, cy0 = Math.cos(lastPose.yaw), sy0 = Math.sin(lastPose.yaw);
   const toLocal = (p, isDir, limb) => {               // inverse of toWorld
-    let x = p[0] - (isDir ? 0 : STAGE.x), y = p[1], z = p[2] - (isDir ? 0 : STAGE.z);
+    let x = p[0] - (isDir ? 0 : lastPose.x), y = p[1], z = p[2] - (isDir ? 0 : lastPose.z);
     let lx = (cy0 * x - sy0 * z) / sc, ly = y / sc, lz = (-sy0 * x - cy0 * z) / sc;
     if (limb) { const [, py, pz, a] = limb, c = Math.cos(-a), s = Math.sin(-a), dy = ly - (isDir ? 0 : py), dz = lz - (isDir ? 0 : pz);
       ly = (isDir ? 0 : py) + dy * c - dz * s; lz = (isDir ? 0 : pz) + dy * s + dz * c; }
@@ -595,7 +620,7 @@ function placePinAt(cx, cy) {
   };
   let best = null;
   for (const h of lastHits) {
-    const o = toLocal([cam.x, cam.y, cam.z], false, h.limb), dl = toLocal(d, true, h.limb);
+    const o = toLocal(org, false, h.limb), dl = toLocal(d, true, h.limb);
     let t0 = -Infinity, t1 = Infinity, ax = -1, sg = 0;
     for (let a = 0; a < 3; a++) {
       const lo = h.b[a], hi = h.b[a + 3];
@@ -613,11 +638,10 @@ function placePinAt(cx, cy) {
   if (pinsLeft(armPin) <= 0) armPin = null;
   keepScroll(render);
 }
-document.addEventListener('keydown', e => { if (mode === 'creator' && e.code === 'Escape' && document.getElementById('crDone').textContent === 'Done') closeCreator(false); });
+document.addEventListener('keydown', e => { if (mode === 'mirror' && e.code === 'Escape' && document.getElementById('crDone').textContent === 'Done') closeCreator(false); });
 
 N.hooks.newLife.push(() => openCreator('new'));
-N.hooks.interact.push(id => { if (id !== 'bath') return false; openCreator('mirror'); return true; });
-const bath = N.things.find(t => t.id === 'bath'); if (bath) bath.prompt = 'Bathroom mirror (change your look)';
+N.hooks.interact.push(id => { if (id !== 'mirror') return false; openCreator('mirror'); return true; });
 
 // keys list on the title screen
 const keysEl = document.querySelector('.keys');
