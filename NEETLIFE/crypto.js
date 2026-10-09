@@ -203,7 +203,15 @@ const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
 const holding = sym => C().hold[sym] || { q: 0, cost: 0 };
 function addHold(sym, q, cost) { const c = C(), h = c.hold[sym] || (c.hold[sym] = { q: 0, cost: 0 }); h.q += q; h.cost += cost; }
 // for mining.js: read prices, and pay mined coins into the wallet (cost basis = what they were worth when mined)
-N.cryptoApi = { coins: COINS, price: sym => N.S && N.S.crypto ? N.S.crypto.p[sym] : (BY[sym] || {}).seed, credit(sym, q) { if (q > 0 && N.S && N.S.crypto) addHold(sym, q, q * N.S.crypto.p[sym]); } };
+N.cryptoApi = { coins: COINS, price: sym => N.S && N.S.crypto ? N.S.crypto.p[sym] : (BY[sym] || {}).seed,
+  credit(sym, q) { if (q > 0 && N.S && N.S.crypto) { addHold(sym, q, q * N.S.crypto.p[sym]); return true; } return false; },
+  // what you hold (incl. coins locked in sell orders), and what a market sell would pay after spread + fee
+  holdings() { const c = N.S && N.S.crypto; if (!c) return []; const out = {};
+    for (const [s, h] of Object.entries(c.hold)) if (h.q > 0) out[s] = { sym: s, q: h.q, cost: h.cost, locked: 0 };
+    for (const o of c.orders) if (o.side === 'sell') { const r = out[o.sym] || (out[o.sym] = { sym: o.sym, q: 0, cost: 0, locked: 0 }); r.q += o.q; r.cost += o.cost; r.locked += o.q; }
+    return Object.values(out).map(r => ({ ...r, price: c.p[r.sym], value: r.q * c.p[r.sym], sellNet: r.q * c.p[r.sym] * (1 - SPREAD) * (1 - FEE) })); },
+  open(sym) { if (sym && BY[sym]) ui.sel = sym; ui.tab = 'hold'; if (cxApp) cxApp.open(); } };
+let cxApp = null;
 function takeHold(sym, q) { // returns cost basis removed
   const c = C(), h = c.hold[sym]; if (!h) return 0;
   const frac = Math.min(1, q / h.q), cost = h.cost * frac;
@@ -608,7 +616,7 @@ function open(body) {
   refreshUI();
 }
 
-N.pcAddApp('crypto', '₿', 'CoinDen', 'linear-gradient(135deg,#f0b90b,#e5711d)', open);
+cxApp = N.pcAddApp('crypto', '₿', 'CoinDen', 'linear-gradient(135deg,#f0b90b,#e5711d)', open);
 
 // test hooks
 window.__crypto = { COINS, get c() { return C(); }, step: n => { for (let i = 0; i < n; i++) step(C()); N.S.t = Math.max(N.S.t, C().t); refreshUI(); },

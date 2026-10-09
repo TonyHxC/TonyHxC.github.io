@@ -146,12 +146,8 @@ N.hooks.update.push(() => {
     m.usd += e.rev * days; void price;
   }
   const kwh = load / 1000 * days * 24; m.kwh += kwh; N.addKwh(kwh);
-  // pool payout every game hour
-  m.payT += dtMin;
-  if (m.payT >= 60) {
-    m.payT = 0;
-    for (const [sym, q] of Object.entries(m.pending)) if (q > 0) { CX.credit(sym, q); m.life[sym] = (m.life[sym] || 0) + q; m.pending[sym] = 0; }
-  }
+  // coins stream straight into the CoinDen wallet as they're mined
+  for (const [sym, q] of Object.entries(m.pending)) if (q > 0 && CX.credit(sym, q)) { m.life[sym] = (m.life[sym] || 0) + q; m.pending[sym] = 0; }
   // redraw the rigs when what's running changes (fan glow on/off)
   const now = live.map(p => p.uid).join(',');
   if (now !== sig) { sig = now; N.furn.rebuild(); }
@@ -265,6 +261,9 @@ css.textContent = `
   .mn-item .nm { font-weight: 800; } .mn-item .ds { font-size: 12px; color: #6a6880; flex: 1; } .mn-item .sp { font-size: 12px; color: #3b3a44; } .mn-item .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .mn-item .pr { font-weight: 900; font-size: 16px; }
   .mn-h4 { margin: 16px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: #7a7790; }
+  .mn-wallet { background: #fff; border: 1px solid #ddd9cf; border-radius: 10px; padding: 10px 12px; margin: 0 0 12px; }
+  .mn-whead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 14px; }
+  .mn-total td { border-top: 2px solid #ddd9cf; }
   .mn-note { font-size: 12px; color: #6a6880; margin: 4px 0 10px; line-height: 1.5; }
   .mn-build { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } @media (max-width: 760px) { .mn-build { grid-template-columns: 1fr; } }
   .mn-field { margin-bottom: 10px; } .mn-field label { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px; color: #7a7790; margin-bottom: 4px; }
@@ -307,7 +306,8 @@ function rigsTab(rigs, live, load, cap, rev, cost) {
   if (m.tripped) h += `<p class="mn-note"><b class="neg">💥 The breaker tripped.</b> Switch some rigs off so you're under ${fmtW(cap)}, then <button class="wbtn gold" id="mnReset">Reset breaker</button></p>`;
   if (N.powerCut) h += `<p class="mn-note"><b class="neg">⚡ Your power is cut off</b> for an unpaid electricity bill. Nothing mines until it's paid (Bills app).</p>`;
   h += `<p class="mn-note">Electricity since the last bill: <b>${pw.kwh.toFixed(1)} kWh</b> (~${N.money(N.POWER.base + pw.kwh * N.POWER.rate)} so far, mining used ${m.kwh.toFixed(0)} kWh in total).
-    Coins pay out to your CoinDen wallet every game hour${pend.length ? `; waiting: ${pend.map(([s, q]) => `${q.toPrecision(3)} ${s}`).join(', ')}` : ''}. Mined so far: ${usd(m.usd)} worth.</p>`;
+    Mined coins go straight into your CoinDen wallet as they're found${pend.length ? ` (waiting for CoinDen: ${pend.map(([s, q]) => `${q.toPrecision(3)} ${s}`).join(', ')})` : ''}. Mined so far: ${usd(m.usd)} worth.</p>`;
+  h += walletBox();
   if (!rigs.length) return h + `<p class="mn-note">No rigs yet. Buy a miner in the <b>HashParts shop</b>, or buy parts and put a rig together in <b>Build</b>.</p>`;
   h += `<table><tr><th>Rig</th><th>Status</th><th>Mining</th><th class="num">Hashrate</th><th class="num">Power</th><th class="num">$/day</th><th></th></tr>`;
   for (const p of rigs) {
@@ -321,6 +321,28 @@ function rigsTab(rigs, live, load, cap, rev, cost) {
         <button class="wbtn" data-apart="${p.uid}" title="${p.rig.asic ? 'Sell to the used market' : 'Parts go back to your inventory'}">${p.rig.asic ? 'Sell ' + usd(asicPrice(p.rig.asic) * SELL) : 'Take apart'}</button></td></tr>`;
   }
   return h + `</table><p class="mn-note">Tip: look at a rig in your room and press <b>E</b> to switch it on or off, or <b>F</b> to move it. ASICs and mining PCs fit on desks, tables and wire shelves.</p>`;
+}
+const fcoin = q => q >= 1000 ? q.toFixed(2) : q >= 1 ? q.toFixed(4) : q.toPrecision(4);
+const fprice = p => p >= 1 ? usd(p) : '$' + p.toPrecision(4);
+function walletBox() {
+  const m = M(), rows = (CX.holdings ? CX.holdings() : []).sort((a, b) => b.value - a.value);
+  let h = `<div class="mn-wallet"><div class="mn-whead"><b>🪙 Your coins</b><button class="wbtn gold" data-cx="">Open CoinDen ↗</button></div>`;
+  if (!rows.length) return h + `<p class="mn-note" style="margin:6px 0 0">Your CoinDen wallet is empty. Coins your rigs mine show up here as they come in.</p></div>`;
+  let tv = 0, tn = 0, tc = 0;
+  h += `<table><tr><th>Coin</th><th class="num">Amount</th><th class="num">Price</th><th class="num">Value</th><th class="num">If sold now</th><th class="num">Profit if sold</th><th class="num">You mined</th><th></th></tr>`;
+  for (const r of rows) {
+    const pnl = r.sellNet - r.cost; tv += r.value; tn += r.sellNet; tc += r.cost;
+    h += `<tr><td><b>${r.sym}</b></td>
+      <td class="num">${fcoin(r.q)}${r.locked ? `<br><small style="color:#7a7790">${fcoin(r.locked)} in sell orders</small>` : ''}</td>
+      <td class="num">${fprice(r.price)}</td><td class="num">${usd(r.value)}</td><td class="num">${usd(r.sellNet)}</td>
+      <td class="num"><span class="${pnl >= 0 ? 'pos' : 'neg'}">${pnl >= 0 ? '+' : ''}${usd(pnl)}</span>${r.cost > 0 ? `<br><small style="color:#7a7790">${pnl >= 0 ? '+' : ''}${(pnl / r.cost * 100).toFixed(1)}%</small>` : ''}</td>
+      <td class="num">${m.life[r.sym] ? fcoin(m.life[r.sym]) : '<span style="color:#aaa">-</span>'}</td>
+      <td class="num"><button class="wbtn" data-cx="${r.sym}">Trade</button></td></tr>`;
+  }
+  const tp = tn - tc;
+  h += `<tr class="mn-total"><td><b>Total</b></td><td></td><td></td><td class="num"><b>${usd(tv)}</b></td><td class="num"><b>${usd(tn)}</b></td><td class="num"><b class="${tp >= 0 ? 'pos' : 'neg'}">${tp >= 0 ? '+' : ''}${usd(tp)}</b></td><td></td><td></td></tr></table>
+    <p class="mn-note" style="margin:6px 0 0">"If sold now" is what a market sell on CoinDen would pay after the spread and 0.6% fee. Profit compares that with what the coins cost you: what you paid for coins you bought, and what mined coins were worth when they were mined. So for mined coins, it shows how much the price has moved since.</p></div>`;
+  return h;
 }
 function buildTab() {
   const owned = Object.entries(inv()).filter(([, n]) => n > 0);
@@ -414,6 +436,7 @@ function netTab() {
 function wire(body) {
   const q = (sel, fn) => body.querySelectorAll(sel).forEach(el => fn(el));
   const byUid = u => allRigs().find(p => p.uid === +u);
+  q('[data-cx]', b => b.onclick = () => CX.open && CX.open(b.dataset.cx));
   q('[data-toggle]', b => b.onclick = () => { const p = byUid(b.dataset.toggle); if (p) useRig(p); render(body); });
   q('[data-place]', b => b.onclick = () => { const p = byUid(b.dataset.place); if (p) N.furn.move(p); });
   q('[data-coin]', s => s.onchange = () => { const p = byUid(s.dataset.coin); if (p) { p.rig.coin = s.value; N.save(); render(body); } });

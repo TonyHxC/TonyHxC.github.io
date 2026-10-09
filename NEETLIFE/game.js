@@ -1486,7 +1486,7 @@ window.POGEY = {
     win.querySelector('.x').onclick = hideWins;
     const open = () => { if (atTable) { confirmLeaveTable(); return; } onOpen(win.querySelector('.body')); openWin(win.id); };
     ic.onclick = open; tb.onclick = open;
-    return { body: win.querySelector('.body'), refresh: () => { if (win.classList.contains('show')) onOpen(win.querySelector('.body')); } };
+    return { body: win.querySelector('.body'), open, refresh: () => { if (win.classList.contains('show')) onOpen(win.querySelector('.body')); } };
   },
 };
 
