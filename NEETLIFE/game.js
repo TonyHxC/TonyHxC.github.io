@@ -1,4 +1,4 @@
-// NEETLIFE — a tiny first-person life sim.
+// Pogey Life — a tiny first-person life sim.
 // Rendering is a small hand-rolled WebGL engine (no dependencies): the room is built from
 // boxes merged into one static mesh, lit by a few point lights plus a time-of-day ambient.
 (() => {
@@ -102,7 +102,9 @@ const thing = (id, prompt, b) => things.push({ id, prompt, box: b });
 // Bathroom behind the south wall: x 2.0..4.3, z 4.12..6.0
 const BATH = { x0: 2.0, x1: 4.3, z0: 4.12, z1: 6.0 };
 // Player settings (per browser, not per save)
-const SETTINGS_KEY = 'neetlife_settings_v1';
+// The game used to be called NEETLIFE: carry old saves, settings, templates etc. over to the new names (once; old keys are left alone)
+try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('neetlife_')) { const nk = 'pogey' + k.slice(4); if (localStorage.getItem(nk) === null) localStorage.setItem(nk, localStorage.getItem(k)); } } } catch (e) {}
+const SETTINGS_KEY = 'pogeylife_settings_v1';
 const settings = Object.assign({ mirror: 'full', pcSize: 75 }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} };
 const BATH_G = { pos: [], nor: [], col: [], glow: [] }, DOORFILL_G = { pos: [], nor: [], col: [], glow: [] };   // bathroom geometry lives in its own mesh so "partial" mirrors can reflect just it
@@ -417,7 +419,7 @@ function render() {
   gl.clearColor(0.02, 0.02, 0.04, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   const aspect = canvas.width / canvas.height;
   const bob = Math.sin(P.bob) * 0.025;
-  const cam = getCamera();
+  const cam = titleMode ? titleCam() : getCamera();
   const eye = cam || { x: P.x, y: P.y + bob, z: P.z, yaw: P.yaw, pitch: P.pitch };
   const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), M4.view(eye.x, eye.y, eye.z, eye.yaw, eye.pitch));
   // weather: clouds grey out and darken the sky; lightning flashes everything
@@ -596,15 +598,15 @@ function handleEsc() {
 }
 function pauseGame() {
   paused = true; showScreen('scPause');
-  plinkoMsg('neetPause');
+  plinkoMsg('pogeyPause');
   if (locked) document.exitPointerLock && document.exitPointerLock();
 }
 function resumeGame() {
-  plinkoMsg('neetResume');
+  plinkoMsg('pogeyResume');
   if (pcOpen) { paused = false; showScreen(null); return; } // back to the PC screen, mouse stays free
   lockPointer(true);
 }
-function plinkoMsg(type) { try { if (atTable) $('plinkoFrame').contentWindow.postMessage({ src: 'neetlife', type }, '*'); } catch (e) {} }
+function plinkoMsg(type) { try { if (atTable) $('plinkoFrame').contentWindow.postMessage({ src: 'pogeylife', type }, '*'); } catch (e) {} }
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 canvas.addEventListener('mousedown', e => { if (!locked && active()) { dragging = true; dragMoved = 0; } });
 window.addEventListener('mouseup', () => { dragging = false; });
@@ -663,7 +665,7 @@ const BILL_DEFS = {
 const BETS = [10, 25, 50, 100, 250, 500];
 // cash-out multiplier after clearing N floors (index = floors cleared). Beyond the table: ×1.25 per floor.
 const CASH_TABLE = [0, 1.1, 1.3, 1.6, 2, 2.8, 3.3, 4, 5, 6.2, 8];
-const SAVE_KEY = 'neetlife_save_v1';
+const SAVE_KEY = 'pogeylife_save_v1';
 
 let S = null; // game state
 function freshState() {
@@ -898,7 +900,7 @@ function renderBills() {
 }
 const cashMult = n => n <= 0 ? 0 : n < CASH_TABLE.length ? CASH_TABLE[n] : CASH_TABLE[CASH_TABLE.length - 1] * Math.pow(1.25, n - CASH_TABLE.length + 1);
 let chosenBet = 25;
-// ---- NeetCasino: a lobby of games. Plinko is the first; more can be added with NEET.casinoAddGame ----
+// ---- PogeyCasino: a lobby of games. Plinko is the first; more can be added with POGEY.casinoAddGame ----
 let casinoView = 'lobby';
 const CASINO_GAMES = [
   { id: 'plinko', icon: '◉', name: 'Plinko', desc: 'Roguelite Plinko. Bet, clear floors, cash out before you bust.', grad: 'linear-gradient(135deg,#7b5cff,#2fc4d6)', render: renderPlinkoBet },
@@ -917,7 +919,7 @@ function renderCasino() {
   if (g) return g.render(body);
   casinoView = 'lobby';
   const st = S.stats;
-  body.innerHTML = `<div class="lobby"><div class="lobby-head"><h3>NeetCasino 🎰</h3><span class="bal">Balance ${money(S.money)}</span></div>
+  body.innerHTML = `<div class="lobby"><div class="lobby-head"><h3>PogeyCasino 🎰</h3><span class="bal">Balance ${money(S.money)}</span></div>
     <p>Pick a game. Please gamble irresponsibly (it's a video game).</p>
     <div class="games">${CASINO_GAMES.map(x => `<button class="game" data-game="${x.id}" style="background:${x.grad}" ${x.soon ? 'disabled' : ''}>
       <span class="gi">${x.icon}</span><span class="gn">${x.name}</span><span class="gd">${x.desc}</span><span class="gt">${x.soon ? 'Coming soon' : 'Play'}</span></button>`).join('')}</div>
@@ -945,13 +947,13 @@ function startTable(bet) {
   $('tableBet').textContent = `Bet ${money(bet)}`;
   $('result').classList.remove('show');
   openWin('winTable');
-  pendingStart = { type: 'neetStart', bet, table: CASH_TABLE };
+  pendingStart = { type: 'pogeyStart', bet, table: CASH_TABLE };
   const fr = $('plinkoFrame');
-  if (frameReady) sendStart(); else if (!fr.src) fr.src = '../Plinko/index.html?neet=1';
+  if (frameReady) sendStart(); else if (!fr.src) fr.src = '../Plinko/index.html?pogey=1';
 }
 function sendStart() {
   if (!pendingStart) return;
-  $('plinkoFrame').contentWindow.postMessage(Object.assign({ src: 'neetlife' }, pendingStart), '*');
+  $('plinkoFrame').contentWindow.postMessage(Object.assign({ src: 'pogeylife' }, pendingStart), '*');
   pendingStart = null;
   setTimeout(() => { try { $('plinkoFrame').contentWindow.focus(); } catch (e) {} }, 50);
 }
@@ -961,16 +963,16 @@ window.addEventListener('message', e => {
   if (!fr || e.source !== fr.contentWindow) return;
   const d = e.data || {};
   if (d.src !== 'plinko') return;
-  if (d.type === 'neetReady') { frameReady = true; sendStart(); }
-  if (d.type === 'neetEsc') handleEsc();
-  if (d.type === 'neetCashOut' && atTable) {
+  if (d.type === 'pogeyReady') { frameReady = true; sendStart(); }
+  if (d.type === 'pogeyEsc') handleEsc();
+  if (d.type === 'pogeyCashOut' && atTable) {
     const win = Math.round(tableBet * cashMult(d.cleared));
     addMoney(win, `Plinko cash-out (floor ${d.cleared})`);
     S.stats.wins++; S.stats.won += win; S.stats.best = Math.max(S.stats.best, win - tableBet);
     advance(15 * d.cleared); updateHUD(); save();
     showResult(true, win, d.cleared);
   }
-  if (d.type === 'neetBust' && atTable) {
+  if (d.type === 'pogeyBust' && atTable) {
     S.stats.busts++;
     advance(15 * Math.max(1, d.floor - 1)); updateHUD(); save();
     setTimeout(() => showResult(false, 0, d.floor - 1), 1400);
@@ -988,7 +990,7 @@ function showResult(won, amt, cleared) {
 function forfeitTable() {
   S.stats.busts++; endTable(); save();
   $('result').classList.remove('show');
-  $('plinkoFrame').src = '../Plinko/index.html?neet=1'; frameReady = false; // reset the table
+  $('plinkoFrame').src = '../Plinko/index.html?pogey=1'; frameReady = false; // reset the table
 }
 function confirmLeaveTable(thenLeavePC) {
   $('resultBox').innerHTML = `<h3>Leave the table?</h3><p>Walking away mid-run forfeits your ${money(tableBet)} bet.</p>
@@ -1006,16 +1008,63 @@ $('btnForfeit').onclick = () => { if (atTable) confirmLeaveTable(); else { rende
 // =====================================================================
 // Title / pause / boot
 // =====================================================================
-function renderTitle() {
-  const saved = load();
+const DISCORD_URL = ''; // paste the Discord invite link here when the server is ready
+let titleView = 'main', titleConfirm = false;
+const DISCORD_SVG = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm4.5 6.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm7 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/></svg>';
+function renderTitle(view) {
+  if (view) { titleView = view; titleConfirm = false; }
+  const saved = load(), has = saved && !saved.evicted;
   const box = $('titleBtns'); box.innerHTML = '';
-  const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = label; b.onclick = fn; box.appendChild(b); };
-  if (saved && !saved.evicted) mk(`Continue · Day ${dayOf(saved.t)} · ${money(saved.money)}`, '', () => begin(saved));
-  mk(saved && !saved.evicted ? 'New life' : 'Start', saved && !saved.evicted ? 'ghost' : '', newLife);
-  mk('Settings', 'ghost', () => openSettings('scTitle'));
+  const mk = (html, fn, cls = '') => { const b = document.createElement('button'); b.className = cls; b.innerHTML = `<span class="ar">▸</span>${html}`; if (fn) b.onclick = fn; else b.disabled = true; box.appendChild(b); return b; };
+  if (titleView === 'main') {
+    mk('Start game', () => renderTitle('start'));
+    mk('Settings', () => openSettings('scTitle'));
+    mk(`${DISCORD_SVG}Discord`, () => { if (DISCORD_URL) window.open(DISCORD_URL, '_blank', 'noopener'); else toast('The Pogey Life Discord is coming soon.', '', 3000); });
+  } else {
+    if (has) mk(`Continue <span class="sub">Day ${dayOf(saved.t)} · ${money(saved.money)}</span>`, () => begin(saved));
+    else mk('Continue <span class="sub">no save yet</span>', null);
+    mk(titleConfirm ? `Start over? <span class="sub">erases Day ${dayOf(saved.t)} · click again</span>` : 'New life', () => {
+      if (has && !titleConfirm) { titleConfirm = true; renderTitle(); box.children[1].focus(); return; }
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+      newLife();
+    }, titleConfirm ? 'warn' : '');
+    mk('← Back', () => renderTitle('main'), 'back');
+  }
+  const first = box.querySelector('button:not(:disabled)'); if (first && $('scTitle').classList.contains('show')) first.focus({ preventScroll: true });
 }
-function newLife() { if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
+// arrow keys / Enter / Esc on the title menu
+document.addEventListener('keydown', e => {
+  if (started || !$('scTitle').classList.contains('show')) return;
+  const bs = [...$('titleBtns').querySelectorAll('button:not(:disabled)')];
+  const i = bs.indexOf(document.activeElement);
+  if (e.code === 'ArrowDown' || e.code === 'ArrowUp') { e.preventDefault(); const n = bs.length; bs[((i < 0 ? (e.code === 'ArrowDown' ? -1 : 0) : i) + (e.code === 'ArrowDown' ? 1 : -1) + n) % n].focus(); }
+  if (e.code === 'Escape' && titleView !== 'main') renderTitle('main');
+});
+document.addEventListener('focusin', e => { for (const b of $('titleBtns').querySelectorAll('button')) b.classList.toggle('on', b === e.target); });
+// the title background: your own apartment if there's a save (a throwaway copy; nothing here is saved), in the evening
+function titleScene() {
+  const saved = load();
+  S = saved && !saved.evicted ? JSON.parse(JSON.stringify(saved)) : freshState();
+  for (const fn of hooks.fresh) fn(S);
+  Object.assign(S, { t: (dayOf(S.t) - 1) * 1440 + TITLE_SHOT.hour * 60, lightOn: TITLE_SHOT.light, lampOn: true, bathLight: true, bathDoor: true });
+}
+const TITLE_SHOT = { x: 0.35, z: 3.75, yaw: -0.5, pitch: -0.08, y: 1.55, hour: 19.4, light: true }; // corner by the door, looking at the desk + dusk window
+function titleCam() {
+  const k = performance.now() / 1000, c = TITLE_SHOT;
+  return { x: c.x + Math.sin(k * 0.05) * 0.08, y: c.y + Math.sin(k * 0.13) * 0.015, z: c.z + Math.cos(k * 0.05) * 0.06,
+    yaw: c.yaw + Math.sin(k * 0.06) * 0.09, pitch: c.pitch + Math.sin(k * 0.09) * 0.02 };
+}
+function titleStamp() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  $('titleStamp').textContent = `${p(d.getMonth() + 1)} ${p(d.getDate())} '${String(d.getFullYear()).slice(2)}  ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+let titleMode = false;
+function showTitle() { titleMode = true; titleScene(); renderTitle('main'); titleStamp(); showScreen('scTitle'); renderTitle(); }
+function newLife() {
+  titleMode = false; S = freshState(); for (const fn of hooks.fresh) fn(S);
+  if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
 function begin(saved) {
+  titleMode = false;
   S = saved || freshState();
   for (const fn of hooks.fresh) fn(S);
   if (S.pos) Object.assign(P, { x: S.pos.x, z: S.pos.z, yaw: S.pos.yaw, pitch: S.pos.pitch });
@@ -1028,7 +1077,7 @@ function begin(saved) {
 $('btnResume').onclick = () => resumeGame();
 $('btnQuitTitle').onclick = () => {
   if (pcOpen) { if (atTable) forfeitTable(); closePC(true); }
-  save(); started = false; paused = true; renderTitle(); showScreen('scTitle');
+  save(); started = false; paused = true; showTitle();
 };
 $('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} newLife(); };
 
@@ -1046,18 +1095,18 @@ function frame(now) {
   $('crosshair').classList.toggle('hot', !!hovered);
   const pr = $('prompt');
   if (hovered) { pr.style.display = 'block'; pr.innerHTML = `<kbd>E</kbd>${typeof hovered.prompt === 'function' ? hovered.prompt() : hovered.prompt}`; } else pr.style.display = 'none';
+  document.body.classList.toggle('titlemode', titleMode);
+  if (titleMode && now - (titleStamp.t || 0) > 15000) { titleStamp.t = now; titleStamp(); }
   if (S || !started) render();
   requestAnimationFrame(frame);
 }
 
 // boot
 buildRoom();
-if (!gl) { document.body.innerHTML = '<p style="padding:30px">Your browser doesn\'t support WebGL, which NEETLIFE needs.</p>'; return; }
+if (!gl) { document.body.innerHTML = '<p style="padding:30px">Your browser doesn\'t support WebGL, which Pogey Life needs.</p>'; return; }
 initGL(); resize();
 if (matchMedia('(pointer: coarse)').matches) $('mobileNote').style.display = '';
-S = freshState(); // background state for the title screen render
-for (const fn of hooks.fresh) fn(S);
-renderTitle();
+showTitle();
 window.addEventListener('beforeunload', save);
 requestAnimationFrame(frame);
 
@@ -1080,8 +1129,15 @@ function renderSettings() {
         background:${settings.mirror === v ? 'var(--panel2)' : 'transparent'};border:1px solid ${settings.mirror === v ? 'var(--accent)' : 'var(--line)'}">
         <input type="radio" name="mirrorOpt" value="${v}" ${settings.mirror === v ? 'checked' : ''} style="margin-top:3px;accent-color:#ffcf5a">
         <span><b>${l}</b><br><span style="color:var(--muted);font-size:13px">${d}</span></span></label>`).join('')}
+    <b style="display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:18px 0 8px">PC screen size</b>
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px">
+      <input type="range" id="setPcSize" min="25" max="100" step="5" value="${settings.pcSize}" style="flex:1;accent-color:#ffcf5a">
+      <b id="setPcSizeVal" style="min-width:44px;text-align:right;font-variant-numeric:tabular-nums">${settings.pcSize}%</b></div>
+    <p style="font-size:12px;margin:6px 2px 0">How much of the window the computer takes up. You can also drag the slider on the PC's taskbar.</p>
     <div style="text-align:center;margin-top:14px"><button class="btn" id="btnSettingsBack">Back</button></div></div>`;
   settingsEl.querySelectorAll('input[name=mirrorOpt]').forEach(r => r.onchange = () => { settings.mirror = r.value; saveSettings(); renderSettings(); });
+  $('setPcSize').oninput = e => { pcSizer.set(+e.target.value); $('setPcSizeVal').textContent = settings.pcSize + '%'; };
+  $('setPcSize').onchange = () => saveSettings();
   $('btnSettingsBack').onclick = () => showScreen(settingsBack);
 }
 // PC monitor size = settings.pcSize % of the window. Below ~960x600 the whole screen is zoomed down instead of
@@ -1140,7 +1196,7 @@ function openSettings(from) { settingsBack = from; renderSettings(); showScreen(
 { const b = document.createElement('button'); b.className = 'btn ghost'; b.textContent = 'Settings'; b.onclick = () => openSettings('scPause'); $('btnQuitTitle').before(b); }
 
 // ---- module API (see cooking.js) ----
-window.NEET = {
+window.POGEY = {
   hooks, box, prism, quad, thing, things, env, MIRROR, BATH, walkable, settings, begin, showScreen, renderTitle, lockPointer,
   get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC, internetOn, clockStr, dayOf,
   casinoLobby() { casinoView = 'lobby'; renderCasino(); },
@@ -1169,10 +1225,11 @@ window.NEET = {
 };
 
 // test hooks
-window.__neet = {
+window.__pogey = {
   get S() { return S; }, P, things, interact, advance, openPC, closePC, startTable, renderCasino,
   look(x, z, yaw, pitch) { Object.assign(P, { x, z, yaw, pitch }); },
   forceLock(v) { locked = v; paused = !v; showScreen(null); },
+  TITLE_SHOT, titleScene,
   get hovered() { return hovered; },
 };
 })();

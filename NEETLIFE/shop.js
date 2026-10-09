@@ -1,8 +1,8 @@
-// NEETLIFE — NeetMart: an online shop on the PC for clothes and accessories.
-// The catalogue and the drawing of each item live in character.js (NEET.wardrobe); this is the store front.
+// Pogey Life — PogeyMart: an online shop on the PC for clothes and accessories.
+// The catalogue and the drawing of each item live in character.js (POGEY.wardrobe); this is the store front.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N || !N.wardrobe) return;
 const WD = N.wardrobe;
 
@@ -29,7 +29,7 @@ document.head.appendChild(css);
 
 function render(body) {
   const S = N.S, items = WD.CATALOG.filter(i => i.cat === tab);
-  body.innerHTML = `<div class="nm-head"><h3>NeetMart 🛍</h3><span class="nm-bal">Balance ${N.money(S.money)}</span></div>
+  body.innerHTML = `<div class="nm-head"><h3>PogeyMart 🛍</h3><span class="nm-bal">Balance ${N.money(S.money)}</span></div>
     <p>Free same-minute delivery. Try things on at your bathroom mirror.</p>
     <div class="nm-tabs">${TABS.map(([id, l]) => `<button data-tab="${id}" class="${tab === id ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${tab === 'pins' ? '<div class="nm-sale">Pins stick anywhere: shirt, sleeve, hat, pants, even your face. Buy as many as you like.</div><br>' : ''}
@@ -48,7 +48,7 @@ function render(body) {
 function buy(id, body) {
   const it = WD.CATALOG.find(x => x.id === id), S = N.S;
   if (!it || S.money < it.price || (!it.pin && WD.owns(it.id))) return;
-  N.addMoney(-it.price, `NeetMart: ${it.name}`);
+  N.addMoney(-it.price, `PogeyMart: ${it.name}`);
   WD.give(it);
   const where = it.pin ? 'Place it at the bathroom mirror.'
     : ['hat', 'glasses', 'neck'].includes(it.slot) ? "It's on! Check it out at the bathroom mirror."
@@ -57,5 +57,5 @@ function buy(id, body) {
   render(body);
 }
 
-N.pcAddApp('shop', '🛍', 'NeetMart', 'linear-gradient(135deg,#b98cff,#ff6ec7)', render);
+N.pcAddApp('shop', '🛍', 'PogeyMart', 'linear-gradient(135deg,#b98cff,#ff6ec7)', render);
 })();

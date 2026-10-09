@@ -1,10 +1,10 @@
-// NEETLIFE — CoinDen: a crypto exchange on the PC.
+// Pogey Life — CoinDen: a crypto exchange on the PC.
 // Prices start from the real market (CoinGecko, fetched by the player's browser) and then move in game time:
 // a random walk using each coin's real volatility, a shared "market" shock (alts follow BTC), volatility regimes,
 // random news events, and a slow pull back toward the latest real price so the sim never drifts off forever.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N) return;
 
 // sym, CoinGecko id, name, colour, fallback price (Oct 2026), annual volatility, correlation with the market
@@ -35,7 +35,7 @@ const SPREAD = 0.001;     // you buy 0.1% above and sell 0.1% below the mid pric
 const REV = 0.25;         // pull toward the real price, per game day (half-life ~3 days)
 const EVENT_DAYS = 1.4;   // a news event every ~1.4 game days on average
 const MAX_ORDERS = 12;
-const LIVE_KEY = 'neetlife_crypto_live_v1';
+const LIVE_KEY = 'pogeylife_crypto_live_v1';
 const LIVE_TTL = 5 * 60e3, LIVE_EVERY = 10 * 60e3;
 const LIVE_URL = 'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&include_24hr_change=true&ids=' + COINS.map(c => c.id).join(',');
 

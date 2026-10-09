@@ -1,8 +1,8 @@
-// NEETLIFE — your character: creator, saved templates, bathroom mirror, and the third-person view (V).
+// Pogey Life — your character: creator, saved templates, bathroom mirror, and the third-person view (V).
 // The model is built from rotated boxes in the same blocky style as the room, re-posed every frame.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N) return;
 
 // ---------------------------------------------------------------------
@@ -64,7 +64,7 @@ const CLOTH = ['#e9e6df', '#2a2a2e', '#7a7f87', '#c43a3a', '#2f5fae', '#3a8a5a',
 const DEFAULT = { gender: 'nonbinary', build: 'average', height: 'average', chest: 'flat', skin: '#d9a27e', eyes: '#5a3a22',
   facial: 'none', hair: 'short', hairColor: '#3b2618', top: 'tshirt', topColor: '#7a7f87', bottom: 'jeans', bottomColor: '#2f3b52', shoes: '#2a2a2e',
   hat: 'none', hatColor: '#2a2a2e', glasses: 'none', neck: 'none', pins: [] };
-const TPL_KEY = 'neetlife_templates_v1';
+const TPL_KEY = 'pogeylife_templates_v1';
 
 const pick = a => a[Math.floor(Math.random() * a.length)];
 function randomChar() {
@@ -547,7 +547,7 @@ const BONE_NAME = { body: 'body', head: 'head', armL: 'left arm', armR: 'right a
 function pinsLeft(t) { return ((W && W.pins[t]) || 0) - draft.pins.filter(p => p.t === t).length; }
 function accessoriesHTML() {
   const anyExtras = W && (Object.keys(W.owned).length || Object.values(W.pins).some(n => n > 0));
-  if (!anyExtras) return `<div class="sec"><b>Accessories</b><p style="color:#a39db8;font-size:13px;margin:0">${W ? 'Buy hats, glasses, chains, pins and more clothes in the NeetMart app on your PC.' : 'Hats, glasses, chains and pins can be bought in-game from NeetMart on your PC.'}</p></div>`;
+  if (!anyExtras) return `<div class="sec"><b>Accessories</b><p style="color:#a39db8;font-size:13px;margin:0">${W ? 'Buy hats, glasses, chains, pins and more clothes in the PogeyMart app on your PC.' : 'Hats, glasses, chains and pins can be bought in-game from PogeyMart on your PC.'}</p></div>`;
   let h = '';
   if (OPT.hat.some(([v]) => v !== 'none' && owns(W, v))) {
     h += chips('hat', 'Hat');

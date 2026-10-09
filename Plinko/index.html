@@ -287,9 +287,9 @@
         <button class="btn secondary" id="btnBuyBall">+1 ball next floor</button>
         <button class="btn secondary" id="btnSkip">Skip (+4 ●)</button>
       </div>
-      <div id="neetCashRow" style="display:none;margin-top:10px">
+      <div id="pogeyCashRow" style="display:none;margin-top:10px">
         <button class="btn" id="btnCashOut" style="background:var(--gold);box-shadow:0 4px 0 #b8902f">Cash out</button>
-        <p class="board-note" id="neetCashNote" style="margin-top:6px"></p>
+        <p class="board-note" id="pogeyCashNote" style="margin-top:6px"></p>
       </div>
     </div></div>
 
@@ -339,13 +339,13 @@ const SUPABASE_URL = 'https://hkfyyhnujjuktqovnsby.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_f2J4z9X9m_ex2G_vIuHqQw_rE9MKl3r'; // the anon / publishable key (safe to expose)
 const ONLINE = !!(SUPABASE_URL && SUPABASE_KEY);
 
-// ---------- NEETLIFE embed mode ----------
-// When loaded as /Plinko/index.html?neet=1 inside NEETLIFE, runs are paid bets:
-// the apartment sends {type:'neetStart', bet, table}; we report cash-outs and busts back.
-const NEET = new URLSearchParams(location.search).has('neet');
-const neet = { bet: 0, table: [], active: false };
-function neetPost(msg) { try { window.parent.postMessage(Object.assign({ src: 'plinko' }, msg), '*'); } catch (e) {} }
-function neetCashFor(cleared) { const t = neet.table; if (!cleared) return 0; return Math.round(neet.bet * (t[Math.min(cleared, t.length - 1)] * (cleared >= t.length ? Math.pow(1.25, cleared - t.length + 1) : 1))); }
+// ---------- Pogey Life embed mode ----------
+// When loaded as /Plinko/index.html?pogey=1 inside Pogey Life, runs are paid bets:
+// the apartment sends {type:'pogeyStart', bet, table}; we report cash-outs and busts back.
+const POGEY = new URLSearchParams(location.search).has('pogey');
+const pogey = { bet: 0, table: [], active: false };
+function pogeyPost(msg) { try { window.parent.postMessage(Object.assign({ src: 'plinko' }, msg), '*'); } catch (e) {} }
+function pogeyCashFor(cleared) { const t = pogey.table; if (!cleared) return 0; return Math.round(pogey.bet * (t[Math.min(cleared, t.length - 1)] * (cleared >= t.length ? Math.pow(1.25, cleared - t.length + 1) : 1))); }
 
 // ---------- Player identity (no login) ----------
 function readCookie(k) { const m = document.cookie.match('(?:^|; )' + k + '=([^;]*)'); return m ? decodeURIComponent(m[1]) : null; }
@@ -1037,11 +1037,11 @@ function floorCleared() {
   $('rewardInfo').innerHTML = `${parts.join(' · ').replace(/ · <br>/g, '<br>')}<br>Choose an upgrade. Next target: <b style="color:var(--text)">${targetFor(run.floor + 1)}</b>${(run.floor + 1) % 5 === 0 ? ' <b style="color:var(--red)">(BOSS)</b>' : ''}`;
   sfx(784, 0.15, 'triangle', 0.08); setTimeout(() => sfx(1046, 0.25, 'triangle', 0.08), 120);
   rollOffer();
-  if (NEET && neet.active) {
-    const cleared = run.floor, now = neetCashFor(cleared), next = neetCashFor(cleared + 1);
-    $('neetCashRow').style.display = '';
+  if (POGEY && pogey.active) {
+    const cleared = run.floor, now = pogeyCashFor(cleared), next = pogeyCashFor(cleared + 1);
+    $('pogeyCashRow').style.display = '';
     $('btnCashOut').textContent = `Cash out $${now.toLocaleString()}`;
-    $('neetCashNote').textContent = `Or pick an upgrade and push on: clear floor ${cleared + 1} for $${next.toLocaleString()}. Bust and you lose your $${neet.bet} bet.`;
+    $('pogeyCashNote').textContent = `Or pick an upgrade and push on: clear floor ${cleared + 1} for $${next.toLocaleString()}. Bust and you lose your $${pogey.bet} bet.`;
   }
   showOverlay('ovReward');
   updateHUD();
@@ -1057,7 +1057,7 @@ function floorFailed() {
   }
   mode = 'over';
   saveBest();
-  if (NEET && neet.active) { neet.active = false; neetPost({ type: 'neetBust', floor: run.floor, score: run.totalScore }); }
+  if (POGEY && pogey.active) { pogey.active = false; pogeyPost({ type: 'pogeyBust', floor: run.floor, score: run.totalScore }); }
   const best = store.get('best', { floor: 0, score: 0 });
   $('overInfo').innerHTML = `You scored <b style="color:var(--text)">${fl.score}</b> of <b style="color:var(--text)">${fl.target}</b> on floor ${run.floor}.`;
   $('overStats').innerHTML = `
@@ -1066,7 +1066,7 @@ function floorFailed() {
     <div class="stat"><b>${run.bestBall.toLocaleString()}</b><span>Best single ball</span></div>
     <div class="stat"><b>${best.floor}</b><span>Best floor ever</span></div>`;
   sfx(196, 0.4, 'sawtooth', 0.06);
-  if (NEET) { $('btnRestart').style.display = 'none'; $('overBtns').style.display = 'none'; }
+  if (POGEY) { $('btnRestart').style.display = 'none'; $('overBtns').style.display = 'none'; }
   showOverlay('ovOver');
   submitRun();
 }
@@ -1133,7 +1133,7 @@ function takeUpgrade(id) {
   sfx(988, 0.12, 'square', 0.04);
   nextFloor();
 }
-function nextFloor() { $('neetCashRow').style.display = 'none'; run.floor++; startFloor(); }
+function nextFloor() { $('pogeyCashRow').style.display = 'none'; run.floor++; startFloor(); }
 
 $('btnReroll').onclick = () => { const rc = 2 + run.rerolls; if (run.coins < rc) return; run.coins -= rc; run.rerolls++; rollOffer(); sfx(600, 0.06); };
 $('btnBuyBall').onclick = () => { if (run.coins < 6) return; run.coins -= 6; run.bonusBalls++; refreshShopButtons(); sfx(700, 0.06); };
@@ -1179,28 +1179,28 @@ function startPlay() {
 }
 
 $('btnCashOut').onclick = () => {
-  if (!NEET || !neet.active || mode !== 'reward') return;
-  neet.active = false; mode = 'over';
-  neetPost({ type: 'neetCashOut', cleared: run.floor, score: run.totalScore });
+  if (!POGEY || !pogey.active || mode !== 'reward') return;
+  pogey.active = false; mode = 'over';
+  pogeyPost({ type: 'pogeyCashOut', cleared: run.floor, score: run.totalScore });
   showOverlay(null);
   sfx(1318, 0.12, 'square', 0.05); setTimeout(() => sfx(1760, 0.2, 'square', 0.05), 90);
 };
-if (NEET) {
+if (POGEY) {
   window.addEventListener('message', e => {
     const d = e.data || {};
-    if (d.src !== 'neetlife') return;
-    if (d.type === 'neetStart') {
-      neet.bet = d.bet; neet.table = d.table; neet.active = true;
+    if (d.src !== 'pogeylife') return;
+    if (d.type === 'pogeyStart') {
+      pogey.bet = d.bet; pogey.table = d.table; pogey.active = true;
       paused = null; newRun();
-      $('neetCashRow').style.display = 'none';
+      $('pogeyCashRow').style.display = 'none';
     }
-    if (d.type === 'neetMute') { muted = !!d.muted; updateMuteLabel(); }
-    // NEETLIFE pause menu opened/closed over the table: freeze the run without showing our own menu
-    if (d.type === 'neetPause' && (mode === 'play' || mode === 'reward')) { paused = { mode, overlay: mode === 'reward' ? 'ovReward' : fl && fl.choice ? 'ovGoal' : null }; mode = 'paused'; }
-    if (d.type === 'neetResume' && mode === 'paused') resumeRun();
+    if (d.type === 'pogeyMute') { muted = !!d.muted; updateMuteLabel(); }
+    // Pogey Life pause menu opened/closed over the table: freeze the run without showing our own menu
+    if (d.type === 'pogeyPause' && (mode === 'play' || mode === 'reward')) { paused = { mode, overlay: mode === 'reward' ? 'ovReward' : fl && fl.choice ? 'ovGoal' : null }; mode = 'paused'; }
+    if (d.type === 'pogeyResume' && mode === 'paused') resumeRun();
   });
 }
-$('menuBtn').onclick = () => { if (NEET) return; if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
+$('menuBtn').onclick = () => { if (POGEY) return; if (mode === 'play' || mode === 'reward' || mode === 'over') openMenu(); };
 $('btnPlay').onclick = startPlay;
 $('btnResume').onclick = resumeRun;
 $('btnMenuBoard').onclick = () => { menuReturn = 'ovMenu'; showBoard(); };
@@ -1351,7 +1351,7 @@ const keys = {};
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   keys[e.key] = true;
-  if (e.key === 'Escape' && NEET) { neetPost({ type: 'neetEsc' }); return; } // NEETLIFE's pause menu handles it
+  if (e.key === 'Escape' && POGEY) { pogeyPost({ type: 'pogeyEsc' }); return; } // Pogey Life's pause menu handles it
   if (e.key === 'Escape') { if (mode === 'paused') resumeRun(); else if (mode === 'play' || mode === 'reward') openMenu(); return; }
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (mode === 'play') drop(); }
 });
@@ -2010,10 +2010,10 @@ run = { floor: 1, coins: 0, up: {}, bonusBalls: 0, secondUsed: false, totalScore
 startFloor(); mode = 'menu';
 if (player.name) setName(player.name);
 loadSkin(store.get('ballArt', null), drawMenuIcon);
-if (NEET) {
+if (POGEY) {
   $('menuBtn').style.display = 'none';
   mode = 'menu'; showOverlay(null);
-  neetPost({ type: 'neetReady' });
+  pogeyPost({ type: 'pogeyReady' });
 } else {
   openMenu();
   if (!player.name) askName(() => showOverlay('ovMenu'));

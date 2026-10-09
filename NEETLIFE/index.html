@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NEETLIFE</title>
+<title>Pogey Life</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=VT323&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0b0a12; --panel: #17151f; --panel2: #221f2e; --line: #34304a;
@@ -46,6 +48,44 @@
   .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #a9822a; }
   .btn.ghost { background: var(--panel2); color: var(--text); box-shadow: 0 4px 0 #0c0b12; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
+  /* Title: the apartment rendered live behind it, run through a "disposable camera at night" filter */
+  body.titlemode #gl { filter: contrast(1.25) saturate(1.45) sepia(.12) brightness(1.08) blur(.5px); transform: scale(1.03); }
+  body.titlemode #hud, body.titlemode #crosshair, body.titlemode #prompt { visibility: hidden; }
+  #scTitle { background: none; backdrop-filter: none; justify-content: flex-start; align-items: stretch; padding: 0; overflow: hidden; }
+  .tfx { position: absolute; inset: 0; pointer-events: none; }
+  .tfx.grade { background: linear-gradient(120deg, #5a2fb0 0%, transparent 55%, #ff8a3a 100%); mix-blend-mode: overlay; opacity: .45; }
+  .tfx.leak { background: radial-gradient(circle at 96% 4%, #ff9a3c66 0%, #ff5a5a22 14%, transparent 32%); mix-blend-mode: screen; animation: leak 9s ease-in-out infinite alternate; }
+  .tfx.scrim { background: linear-gradient(90deg, #08070fe6 0%, #08070fa0 28%, #08070f20 52%, transparent 66%); }
+  .tfx.vignette { background: radial-gradient(ellipse 120% 100% at 60% 50%, transparent 50%, #000000b0 100%); }
+  .tfx.grain { inset: -50%; opacity: .16; mix-blend-mode: overlay; animation: grain .9s steps(6) infinite;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  @keyframes grain { 0% { transform: translate(0,0) } 20% { transform: translate(-6%,4%) } 40% { transform: translate(5%,-7%) } 60% { transform: translate(-3%,8%) } 80% { transform: translate(7%,2%) } 100% { transform: translate(-5%,-4%) } }
+  @keyframes leak { from { opacity: .55 } to { opacity: 1 } }
+  .tmain { position: relative; display: flex; flex-direction: column; justify-content: center; padding: 0 16px 0 max(16px, 7vw); width: min(560px, 100%); }
+  .tlogo { margin: 0; font-family: "Bungee", system-ui, sans-serif; font-weight: 400; font-size: clamp(48px, 8.5vw, 104px); line-height: .9; letter-spacing: 1px; color: var(--text);
+    text-shadow: 3px 3px 0 #ff5a8a55, -2px -1px 0 #5ad8ff44, 0 10px 40px #000; }
+  .tlogo span { color: var(--accent); }
+  .ttag { margin: 14px 0 40px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; font-size: 13px; color: #d9d3ea; opacity: .8; }
+  .tmenu { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .tmenu button { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 14px; padding: 8px 0; font-weight: 900; font-size: clamp(22px, 2.6vw, 30px);
+    letter-spacing: 1px; text-transform: uppercase; color: #ffffffb8; transition: color .15s, transform .15s; white-space: nowrap; }
+  .tmenu button .ar { width: 18px; color: var(--accent); opacity: 0; transform: translateX(-8px); transition: opacity .15s, transform .15s; font-size: .8em; }
+  .tmenu button .sub { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-transform: none; }
+  .tmenu button:hover, .tmenu button.on { color: #fff; transform: translateX(6px); }
+  .tmenu button:hover .ar, .tmenu button.on .ar { opacity: 1; transform: none; }
+  .tmenu button:disabled { cursor: default; color: #ffffff40; transform: none; }
+  .tmenu button:disabled .ar { opacity: 0; }
+  .tmenu button.warn { color: var(--red); }
+  .tmenu .back { font-size: 16px; color: #ffffff80; margin-top: 10px; }
+  .tmenu .ico { width: 22px; height: 22px; flex: none; }
+  #mobileNote { color: var(--red); font-weight: 700; margin-top: 20px; }
+  .tkeys { position: absolute; left: max(16px, 7vw); bottom: 22px; font-size: 12px; color: #ffffff80; font-weight: 600; right: 16px; }
+  .tkeys b { color: #fff; background: #ffffff1a; border: 1px solid #ffffff26; border-radius: 4px; padding: 1px 6px; margin: 0 4px 0 10px; font-size: 11px; }
+  .tkeys b:first-child { margin-left: 0; }
+  .tstamp { position: absolute; right: 22px; bottom: 18px; font-family: "VT323", ui-monospace, monospace; font-size: 30px; color: #ff9b3d; letter-spacing: 2px;
+    text-shadow: 0 0 6px #ff7a1a, 0 0 18px #ff5a0066; opacity: .9; }
+  @media (max-width: 700px) { .tkeys { display: none; } .tstamp { font-size: 22px; } .tfx.scrim { background: linear-gradient(90deg, #08070fee 0%, #08070fb8 60%, #08070f70 100%); } }
+
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; text-align: left; font-size: 14px; margin: 14px auto; max-width: 300px; color: var(--muted); }
   .keys b { color: var(--text); font-weight: 800; }
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
@@ -131,20 +171,17 @@
 <div id="fade"></div>
 
 <!-- Title -->
-<div class="screen show" id="scTitle"><div class="card">
-  <h1 class="logo">NEETLIFE</h1>
-  <div class="tag">One room. No job. Rent is due.</div>
-  <p>You live in a bachelor apartment and make money the only way you know how: gambling online. Keep the internet on, pay rent every week, and try not to get evicted.</p>
-  <div class="keys">
-    <b>W A S D</b><span>Move</span>
-    <b>Mouse</b><span>Look around</span>
-    <b>E / Click</b><span>Use things</span>
-    <b>F</b><span>Eat what you're holding</span>
-    <b>Esc</b><span>Pause</span>
+<div class="screen show" id="scTitle">
+  <div class="tfx grade"></div><div class="tfx leak"></div><div class="tfx scrim"></div><div class="tfx vignette"></div><div class="tfx grain"></div>
+  <div class="tmain">
+    <h1 class="tlogo">POGEY<span>LIFE</span></h1>
+    <div class="ttag">One room. No job. Rent is due.</div>
+    <nav class="tmenu" id="titleBtns"></nav>
+    <p id="mobileNote" style="display:none">Pogey Life needs a keyboard and mouse for now.</p>
   </div>
-  <div id="titleBtns"></div>
-  <p id="mobileNote" style="display:none;color:var(--red)">NEETLIFE needs a keyboard and mouse for now.</p>
-</div></div>
+  <div class="tkeys"><b>WASD</b> move <b>Mouse</b> look <b>E</b> use <b>F</b> eat <b>Esc</b> menu</div>
+  <div class="tstamp" id="titleStamp"></div>
+</div>
 
 <!-- Pause -->
 <div class="screen" id="scPause"><div class="card">
@@ -166,24 +203,24 @@
 <div id="pc"><div class="monitor"><div class="screen-area">
   <div class="desk" id="desk">
     <div class="icon" data-app="casino"><div class="ico" style="background:linear-gradient(135deg,#b98cff,#7cf5ff)">🎰</div>Casino</div>
-    <div class="icon" data-app="bank"><div class="ico" style="background:linear-gradient(135deg,#6fe39a,#2a9d5c)">$</div>NeetBank</div>
+    <div class="icon" data-app="bank"><div class="ico" style="background:linear-gradient(135deg,#6fe39a,#2a9d5c)">$</div>PogeyBank</div>
     <div class="icon" data-app="bills"><div class="ico" style="background:linear-gradient(135deg,#ffcf5a,#e0892a)">✉</div>Bills</div>
     <div class="icon" id="iconLogoff"><div class="ico" style="background:linear-gradient(135deg,#555,#222)">⏻</div>Leave PC</div>
   </div>
 
   <div class="win" id="winCasino">
-    <div class="bar">🎰 NeetCasino <button class="x" data-close>✕</button></div>
+    <div class="bar">🎰 PogeyCasino <button class="x" data-close>✕</button></div>
     <div class="body" id="casinoBody"></div>
   </div>
   <div class="win dark" id="winTable">
-    <div class="bar">🎰 NeetCasino · Plinko · <span id="tableBet"></span> <button class="wbtn" id="btnForfeit" style="margin-left:auto;background:#ff5f57">Leave table</button></div>
+    <div class="bar">🎰 PogeyCasino · Plinko · <span id="tableBet"></span> <button class="wbtn" id="btnForfeit" style="margin-left:auto;background:#ff5f57">Leave table</button></div>
     <div class="body" style="display:flex;flex-direction:column;position:relative">
       <iframe id="plinkoFrame" title="Plinko"></iframe>
       <div class="result" id="result"><div class="rbox" id="resultBox"></div></div>
     </div>
   </div>
   <div class="win" id="winBank">
-    <div class="bar">$ NeetBank <button class="x" data-close>✕</button></div>
+    <div class="bar">$ PogeyBank <button class="x" data-close>✕</button></div>
     <div class="body" id="bankBody"></div>
   </div>
   <div class="win" id="winBills">
@@ -192,7 +229,7 @@
   </div>
 
   <div class="taskbar">
-    <span class="start">NeetOS</span>
+    <span class="start">PogeyOS</span>
     <button data-app="casino">🎰 Casino</button>
     <button data-app="bank">$ Bank</button>
     <button data-app="bills">✉ Bills</button>

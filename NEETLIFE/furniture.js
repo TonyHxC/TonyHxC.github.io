@@ -1,11 +1,11 @@
-// NEETLIFE — furniture: every movable piece in the apartment, moving it around, and the Nestly furniture store.
+// Pogey Life — furniture: every movable piece in the apartment, moving it around, and the Nestly furniture store.
 // Each piece is built in local space (origin = min corner of its footprint, w × d, front facing +z) and placed with
-// NEET.withXF (offset + quarter turns). The whole layout is baked into one mesh (NEET.setFurniture) and rebuilt
+// POGEY.withXF (offset + quarter turns). The whole layout is baked into one mesh (POGEY.setFurniture) and rebuilt
 // whenever something moves. Kitchen, bathroom, poster and lights stay fixed.
 // Must load right after game.js: cooking.js customises the trash bin's prompt, so the bin has to exist first.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N) return;
 const { box, prism, GLOW } = N;
 
@@ -71,7 +71,7 @@ const DEFS = {
 
   // ---- the Nestly catalogue ----
   couch: { name: 'Couch', icon: '🛋', price: 450, w: 2.0, d: 0.85, h: 0.9, shop: true, surface: { y: 0.5, r: [0.18, 0.22, 1.82, 0.85] },
-    desc: 'Seats three, or one NEET lying down. Sit on it and watch TV if you have one.',
+    desc: 'Seats three, or one guy on pogey lying down. Sit on it and watch TV if you have one.',
     build() {
       const c = '#4a6fa5';
       box(0.05, 0, 0.05, 1.9, 0.1, 0.75, '#2b2b30'); box(0, 0.1, 0, 2.0, 0.3, 0.85, '#3f5f8f');

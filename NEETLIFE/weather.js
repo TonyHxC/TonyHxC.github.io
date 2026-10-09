@@ -1,10 +1,10 @@
-// NEETLIFE — weather and the view out the window.
+// Pogey Life — weather and the view out the window.
 // Each day rolls a weather type from the save's seed (so it's the same on reload): clear, cloudy, rain or a
 // thunderstorm, with the rain arriving and leaving during the day. Draws the sun, moon, stars, clouds, city
 // lights, rain, drops on the glass and lightning; drives lightning flashes, thunder, rain audio and power flickers.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N) return;
 const { GLOW } = N;
 

@@ -1,9 +1,9 @@
-// NEETLIFE — cooking.
+// Pogey Life — cooking.
 // Self-contained module: fridge, cutting board, stove + pan, trash, eating, a Food meter,
-// and a Groceries app on the PC. It plugs into game.js through window.NEET (hooks + helpers).
+// and a Groceries app on the PC. It plugs into game.js through window.POGEY (hooks + helpers).
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N) return;
 
 // ---------------------------------------------------------------------

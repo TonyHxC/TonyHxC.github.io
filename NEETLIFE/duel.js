@@ -1,4 +1,4 @@
-// NEETLIFE — Duel: a NeetCasino game. Two gunslingers face off; you have a six-shooter and ONE bullet.
+// Pogey Life — Duel: a PogeyCasino game. Two gunslingers face off; you have a six-shooter and ONE bullet.
 // The empty cylinder spins at the bottom of the screen. Click a chamber to load your bullet into it:
 // the chamber lined up with the barrel (green ring) fires on the first trigger pull, its neighbours (yellow) on the
 // second, the rest (red) on the third / fourth. Each pull = cock the hammer, then pull the trigger (click, click).
@@ -6,7 +6,7 @@
 // Casino rules like Plinko: bet once, beat duels to climb the payout ladder, cash out after any win, die and lose the bet.
 (() => {
 'use strict';
-const N = window.NEET;
+const N = window.POGEY;
 if (!N || !N.casinoAddGame) return;
 
 // ---------------------------------------------------------------------
