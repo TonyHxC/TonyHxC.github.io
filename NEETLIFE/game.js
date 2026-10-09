@@ -1069,68 +1069,122 @@ $('btnForfeit').onclick = () => { if (atTable) confirmLeaveTable(); else { rende
 const DISCORD_URL = ''; // paste the Discord invite link here when the server is ready
 let titleView = 'main', titleConfirm = false;
 const DISCORD_SVG = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm4.5 6.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm7 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/></svg>';
+// The title menu. Views: main -> start (Continue / New life / Select character / Enter code) -> select | code | replace.
+// A computer keeps up to MAX_LOCAL characters; making or loading one more asks which to replace.
+const MAX_LOCAL = 3;
+let pendingReplace = null, codeMsg = '', armed = null; // armed = the row that needs a second click to confirm
+const PARENT = { start: 'main', select: 'start', code: 'start', replace: 'start' };
+function charLine(p) { return `${p.evicted ? 'Evicted' : 'Day ' + p.day + ' · ' + money(p.money)}${p.at ? ' · ' + new Date(p.at).toLocaleDateString() : ''}`; }
+function deleteLocal(code) {
+  try { localStorage.removeItem(SLOT_PREFIX + code); } catch (e) {}
+  if (lsGet(ACTIVE_KEY) === code) { const rest = localProfiles(); if (rest[0]) lsSet(ACTIVE_KEY, rest[0].code); else try { localStorage.removeItem(ACTIVE_KEY); } catch (e) {} }
+}
+function pickChar(code, note) { lsSet(ACTIVE_KEY, code); titleScene(); renderTitle('start'); if (note) toast(note, 'good', 3500); }
+// New life, unless the computer is full: then choose who to replace first
+function startNewLife() {
+  if (localProfiles().length >= MAX_LOCAL) { pendingReplace = { kind: 'new' }; renderTitle('replace'); }
+  else newLife();
+}
 function renderTitle(view) {
-  if (view) { titleView = view; titleConfirm = false; }
-  const saved = load(), has = saved && !saved.evicted;
+  if (view) { titleView = view; armed = null; }
+  const saved = load(), has = saved && !saved.evicted, chars = localProfiles();
   const box = $('titleBtns'); box.innerHTML = '';
   const mk = (html, fn, cls = '') => { const b = document.createElement('button'); b.className = cls; b.innerHTML = `<span class="ar">▸</span>${html}`; if (fn) b.onclick = fn; else b.disabled = true; box.appendChild(b); return b; };
+  const note = html => { const d = document.createElement('div'); d.className = 'tnote'; d.innerHTML = html; box.appendChild(d); };
+  // a list of characters as menu rows (select / replace)
+  const charRows = (onPick, opts = {}) => {
+    const act = lsGet(ACTIVE_KEY);
+    for (const p of chars) {
+      const row = document.createElement('div'); row.className = 'tchar';
+      const isArmed = armed && armed.code === p.code;
+      const main = mk(isArmed && armed.what === 'pick' ? `<span class="tc-code">${opts.confirmText || 'Click again'}</span><span class="sub">${p.code}</span>`
+        : `<span class="tc-code">${p.code}</span><span class="sub">${charLine(p)}${p.code === act ? ' · selected' : ''}</span>`,
+        () => { if (opts.confirm && !(isArmed && armed.what === 'pick')) { armed = { code: p.code, what: 'pick' }; renderTitle(); focusRow(p.code); return; } onPick(p); }, isArmed && armed.what === 'pick' ? 'warn' : '');
+      main.dataset.code = p.code;
+      row.appendChild(main);
+      if (opts.del) {
+        const del = document.createElement('button'); del.className = 'tc-del' + (isArmed && armed.what === 'del' ? ' armed' : ''); del.title = 'Delete from this computer';
+        del.textContent = isArmed && armed.what === 'del' ? 'Delete?' : '✕';
+        del.onclick = () => {
+          if (!(isArmed && armed.what === 'del')) { armed = { code: p.code, what: 'del' }; renderTitle(); return; }
+          deleteLocal(p.code); armed = null;
+          toast(cloud.ready ? `Deleted ${p.code} from this computer. It's still saved online: enter the code to bring it back.` : `Deleted ${p.code}.`, '', 4500);
+          titleScene(); renderTitle(localProfiles().length ? 'select' : 'start');
+        };
+        row.appendChild(del);
+      }
+      box.appendChild(row);
+    }
+  };
   if (titleView === 'main') {
     mk('Start game', () => renderTitle('start'));
-    mk('Enter player code', () => renderTitle('code'));
     mk('Settings', () => openSettings('scTitle'));
     mk(`${DISCORD_SVG}Discord`, () => { if (DISCORD_URL) window.open(DISCORD_URL, '_blank', 'noopener'); else toast('The Pogey Life Discord is coming soon.', '', 3000); });
+  } else if (titleView === 'start') {
+    if (has) mk(`Continue <span class="sub">${saved.code || ''} · Day ${dayOf(saved.t)} · ${money(saved.money)}</span>`, () => continueGame(saved));
+    else mk(`Continue <span class="sub">${saved && saved.evicted ? 'this character was evicted' : 'no save yet'}</span>`, null);
+    mk('New life', startNewLife);
+    if (chars.length) mk(`Select character <span class="sub">${chars.length} of ${MAX_LOCAL} on this computer</span>`, () => renderTitle('select'));
+    mk('Enter code', () => renderTitle('code'));
+    mk('← Back', () => renderTitle('main'), 'back');
+  } else if (titleView === 'select') {
+    note(`Choose who to play as. You can keep ${MAX_LOCAL} characters on this computer.`);
+    charRows(p => pickChar(p.code, `Selected ${p.code}.`), { del: true });
+    mk('← Back', () => renderTitle('start'), 'back');
+  } else if (titleView === 'replace') {
+    const pr = pendingReplace || { kind: 'new' };
+    note(`<b>This computer already has ${MAX_LOCAL} characters.</b> ${pr.kind === 'new' ? 'Starting a new life' : `Loading ${pr.code}`} will replace one of them. Pick which one:`);
+    charRows(p => {
+      deleteLocal(p.code); pendingReplace = null;
+      if (pr.kind === 'new') newLife();
+      else { lsSet(SLOT_PREFIX + pr.code, JSON.stringify(pr.data)); pickChar(pr.code, `Replaced ${p.code} with ${pr.code}.`); }
+    }, { confirm: true, confirmText: 'Replace this one? Click again' });
+    note(cloud.ready ? 'The replaced character stays saved online, so its code can still bring it back later.' : 'The replaced character is deleted from this computer.');
+    mk('← Cancel', () => { pendingReplace = null; renderTitle('start'); }, 'back');
   } else if (titleView === 'code') {
     renderCodeScreen(box, mk);
-    return;
-  } else {
-    if (has) mk(`Continue <span class="sub">Day ${dayOf(saved.t)} · ${money(saved.money)} · ${saved.code || ''}</span>`, () => continueGame(saved));
-    else mk('Continue <span class="sub">no save yet</span>', null);
-    mk(has ? 'New life <span class="sub">your current character stays saved</span>' : 'New life', newLife);
-    mk('Enter player code', () => renderTitle('code'));
-    mk('← Back', () => renderTitle('main'), 'back');
   }
-  const first = box.querySelector('button:not(:disabled)'); if (first && $('scTitle').classList.contains('show')) first.focus({ preventScroll: true });
 }
-// Enter player code: type a code, or pick one of the characters already on this computer
-let codeMsg = '';
+function focusRow(code) { const b = $('titleBtns').querySelector(`[data-code="${code}"]`); if (b) b.focus({ preventScroll: true }); }
+// Enter code: load a character by its player code (from this computer, or the online saves)
 function renderCodeScreen(box, mk) {
-  const act = lsGet(ACTIVE_KEY), list = localProfiles();
   const form = document.createElement('div'); form.className = 'tcode';
   form.innerHTML = `<div class="tcode-lbl">Player code</div>
     <div class="tcode-row"><input id="codeIn" maxlength="16" placeholder="XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off"><button id="codeGo">Load</button></div>
-    <div class="tcode-msg" id="codeMsg">${codeMsg}</div>
-    ${list.length ? `<div class="tcode-lbl" style="margin-top:18px">On this computer</div><div class="tcode-list">${list.map(p => `<button data-code="${p.code}" class="${p.code === act ? 'cur' : ''}">
-      <b>${p.code}</b><span>${p.evicted ? 'Evicted' : 'Day ' + p.day + ' · ' + money(p.money)}${p.at ? ' · ' + new Date(p.at).toLocaleDateString() : ''}${p.code === act ? ' · current' : ''}</span></button>`).join('')}</div>` : ''}`;
+    <div class="tcode-msg" id="codeMsg">${codeMsg}</div>`;
   box.appendChild(form); codeMsg = '';
   const inp = form.querySelector('#codeIn'), msg = form.querySelector('#codeMsg');
   inp.oninput = () => { const x = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12); inp.value = x.replace(/(.{4})(?=.)/g, '$1-'); };
-  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') renderTitle('main'); };
-  const pick = (code, note) => { lsSet(ACTIVE_KEY, code); titleScene(); renderTitle('start'); if (note) toast(note, 'good', 3500); };
-  form.querySelectorAll('[data-code]').forEach(b => b.onclick = () => pick(b.dataset.code, `Switched to ${b.dataset.code}.`));
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') renderTitle('start'); };
   async function go() {
     const code = normCode(inp.value);
     if (!code) { msg.className = 'tcode-msg bad'; msg.textContent = 'Codes are 12 letters and numbers, like K7QM-3XRP-9FHT.'; return; }
-    if (load(code)) { pick(code, 'Character loaded.'); return; }
+    if (load(code)) { pickChar(code, 'Character selected.'); return; }
     msg.className = 'tcode-msg'; msg.textContent = 'Looking it up…'; form.querySelector('#codeGo').disabled = true;
     const online = await cloud.load(code);
     form.querySelector('#codeGo').disabled = false;
-    if (online && typeof online === 'object') { online.code = code; lsSet(SLOT_PREFIX + code, JSON.stringify(online)); pick(code, 'Character loaded from your online save.'); return; }
+    if (online && typeof online === 'object') {
+      online.code = code;
+      if (localProfiles().length >= MAX_LOCAL) { pendingReplace = { kind: 'code', code, data: online }; renderTitle('replace'); return; }
+      lsSet(SLOT_PREFIX + code, JSON.stringify(online)); pickChar(code, 'Character loaded from your online save.'); return;
+    }
     msg.className = 'tcode-msg bad';
     msg.textContent = online === null ? 'No character found with that code.' : cloud.ready === false ? "That code isn't on this computer, and online saving isn't switched on yet." : "Couldn't reach the online saves. Check your connection and try again.";
   }
   form.querySelector('#codeGo').onclick = go;
-  mk('← Back', () => renderTitle('main'), 'back');
+  mk('← Back', () => renderTitle('start'), 'back');
   setTimeout(() => inp.focus(), 30);
 }
-// arrow keys / Enter / Esc on the title menu
+// arrow keys / Enter / Esc on the title menu (nothing is highlighted until you use the keys or the mouse)
 document.addEventListener('keydown', e => {
   if (started || !$('scTitle').classList.contains('show')) return;
   const bs = [...$('titleBtns').querySelectorAll('button:not(:disabled)')];
   const i = bs.indexOf(document.activeElement);
   if (e.code === 'ArrowDown' || e.code === 'ArrowUp') { e.preventDefault(); const n = bs.length; bs[((i < 0 ? (e.code === 'ArrowDown' ? -1 : 0) : i) + (e.code === 'ArrowDown' ? 1 : -1) + n) % n].focus(); }
-  if (e.code === 'Escape' && titleView !== 'main' && document.activeElement.id !== 'codeIn') renderTitle('main');
+  if (e.code === 'Escape' && PARENT[titleView] && document.activeElement.id !== 'codeIn') { if (titleView === 'replace') pendingReplace = null; renderTitle(PARENT[titleView]); }
 });
-document.addEventListener('focusin', e => { for (const b of $('titleBtns').querySelectorAll('button')) b.classList.toggle('on', b === e.target); });
+document.addEventListener('focusin', e => { for (const b of $('titleBtns').querySelectorAll('button')) b.classList.toggle('on', b === e.target && b.matches(':focus-visible')); });
+document.addEventListener('focusout', e => { if (e.target.classList) e.target.classList.remove('on'); });
 // the title background: your own apartment if there's a save (a throwaway copy; nothing here is saved), in the evening
 function titleScene() {
   const saved = load();
@@ -1149,7 +1203,7 @@ function titleStamp() {
   $('titleStamp').textContent = `${p(d.getMonth() + 1)} ${p(d.getDate())} '${String(d.getFullYear()).slice(2)}  ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 let titleMode = false;
-function showTitle() { titleMode = true; titleScene(); renderTitle('main'); titleStamp(); showScreen('scTitle'); renderTitle(); }
+function showTitle() { titleMode = true; titleScene(); renderTitle('main'); titleStamp(); showScreen('scTitle'); }
 function newLife() {
   titleMode = false; S = freshState(); for (const fn of hooks.fresh) fn(S);
   if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
@@ -1188,7 +1242,10 @@ $('btnQuitTitle').onclick = () => {
   if (pcOpen) { if (atTable) forfeitTable(); closePC(true); }
   save(); cloud.flush(); started = false; paused = true; showTitle();
 };
-$('btnNewLife').onclick = () => newLife(); // the evicted character stays saved under its code
+$('btnNewLife').onclick = () => { // the evicted character stays saved under its code (and counts towards the 3)
+  if (localProfiles().length >= MAX_LOCAL) { started = false; paused = true; pendingReplace = { kind: 'new' }; showTitle(); renderTitle('replace'); }
+  else newLife();
+};
 
 let last = performance.now(), saveTimer = 0;
 function frame(now) {

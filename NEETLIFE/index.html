@@ -98,6 +98,13 @@
   .tcode-list button:hover, .tcode-list button:focus { border-color: var(--accent); }
   .tcode-list button.cur { border-color: #ffcf5a88; }
   .tcode-list b { font: 800 15px ui-monospace, Consolas, monospace; letter-spacing: 1px; color: #fff; } .tcode-list span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .tnote { font-size: 14px; color: #d9d3ea; line-height: 1.5; max-width: 440px; margin: 0 0 10px; } .tnote b { color: #fff; }
+  .tchar { display: flex; align-items: center; gap: 14px; }
+  .tmenu .tchar > button:first-child { flex-wrap: wrap; row-gap: 0; }
+  .tc-code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 2px; }
+  .tmenu .tc-del { all: unset; cursor: pointer; font: 800 13px system-ui; color: #ffffff70; padding: 6px 10px; border-radius: 8px; border: 1px solid #ffffff22; white-space: nowrap; }
+  .tmenu .tc-del:hover { color: var(--red); border-color: var(--red); }
+  .tmenu .tc-del.armed { color: #fff; background: #c43a3a; border-color: #c43a3a; }
   #mobileNote { color: var(--red); font-weight: 700; margin-top: 20px; }
   .tkeys { position: absolute; left: max(16px, 7vw); bottom: 22px; font-size: 12px; color: #ffffff80; font-weight: 600; right: 16px; }
   .tkeys b { color: #fff; background: #ffffff1a; border: 1px solid #ffffff26; border-radius: 4px; padding: 1px 6px; margin: 0 4px 0 10px; font-size: 11px; }
