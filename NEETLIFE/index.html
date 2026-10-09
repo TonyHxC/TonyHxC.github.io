@@ -52,9 +52,9 @@
   .stat { background: var(--panel2); border-radius: 10px; padding: 10px; } .stat b { display: block; font-size: 22px; } .stat span { font-size: 12px; color: var(--muted); }
 
   /* PC */
-  #pc { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #000d; z-index: 20; padding: 2vmin; }
+  #pc { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #000d; z-index: 20; }
   #pc.show { display: flex; }
-  .monitor { width: min(1200px, 100%); height: min(760px, 100%); background: #111; border-radius: 18px; padding: 14px; box-shadow: 0 0 0 2px #2a2a2a, 0 30px 80px #000; display: flex; }
+  .monitor { width: 75vw; height: 75vh; flex: none; background: #111; border-radius: 18px; padding: 14px; box-shadow: 0 0 0 2px #2a2a2a, 0 30px 80px #000; display: flex; }
   .screen-area { position: relative; flex: 1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
     background: radial-gradient(ellipse at 30% 20%, #2c4a7a 0%, #172440 45%, #0c1222 100%); }
   .desk { flex: 1; position: relative; padding: 18px; display: grid; grid-template-columns: repeat(auto-fill, 92px); grid-auto-rows: 100px; gap: 8px; align-content: start; }
@@ -192,5 +192,6 @@
 <script src="weather.js"></script>
 <script src="character.js"></script>
 <script src="shop.js"></script>
+<script src="crypto.js"></script>
 </body>
 </html>

@@ -84,7 +84,7 @@ const thing = (id, prompt, b) => things.push({ id, prompt, box: b });
 const BATH = { x0: 2.0, x1: 4.3, z0: 4.12, z1: 6.0 };
 // Player settings (per browser, not per save)
 const SETTINGS_KEY = 'neetlife_settings_v1';
-const settings = Object.assign({ mirror: 'full' }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
+const settings = Object.assign({ mirror: 'full', pcSize: 75 }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} };
 const BATH_G = { pos: [], nor: [], col: [], glow: [] }, DOORFILL_G = { pos: [], nor: [], col: [], glow: [] };   // bathroom geometry lives in its own mesh so "partial" mirrors can reflect just it
 // full-length mirror on the bathroom's west wall (glass faces +x)
@@ -859,7 +859,7 @@ function openPC() {
   pcOpen = true;
   document.exitPointerLock && document.exitPointerLock();
   $('pc').classList.add('show');
-  hideWins(); updateHUD();
+  hideWins(); updateHUD(); pcSizer.place();
 }
 function closePC(force) {
   if (atTable && !force) { confirmLeaveTable(); return; }
@@ -1057,13 +1057,64 @@ function renderSettings() {
   settingsEl.querySelectorAll('input[name=mirrorOpt]').forEach(r => r.onchange = () => { settings.mirror = r.value; saveSettings(); renderSettings(); });
   $('btnSettingsBack').onclick = () => showScreen(settingsBack);
 }
+// PC monitor size = settings.pcSize % of the window. Below ~960x600 the whole screen is zoomed down instead of
+// squeezing the apps, so they keep their layout at any size.
+function applyPcSize() {
+  const m = document.querySelector('#pc .monitor'); if (!m) return;
+  const f = Math.max(25, Math.min(100, settings.pcSize || 75)) / 100;
+  const W = innerWidth * f, H = innerHeight * f, z = Math.min(1, W / 960, H / 600);
+  m.style.width = W / z + 'px'; m.style.height = H / z + 'px'; m.style.zoom = z;
+  m.style.borderRadius = f === 1 ? '0' : ''; m.style.padding = f === 1 ? '6px' : '';
+  if (typeof pcSizer !== 'undefined') pcSizer.place();
+}
+window.addEventListener('resize', applyPcSize);
+// size slider on the PC taskbar (bottom right). Dragging works from where you grabbed it rather than from the
+// track's live position, because the track itself moves and shrinks as the monitor resizes under the cursor.
+const pcSizer = (() => {
+  const st = document.createElement('style');
+  st.textContent = `.tbsize { position:fixed; z-index:21; display:flex; align-items:center; gap:8px; height:30px; padding:0 10px; border-radius:8px; background:#0b0f1b; border:1px solid #ffffff22; color:var(--text); font-size:13px; font-weight:800; user-select:none; touch-action:none; }
+    .tbsize .ic { font-size:14px; opacity:.75; }
+    .tbsize .trk { position:relative; width:96px; height:18px; cursor:pointer; }
+    .tbsize .trk::before { content:''; position:absolute; left:0; right:0; top:7px; height:4px; border-radius:2px; background:#ffffff26; }
+    .tbsize .fill { position:absolute; left:0; top:7px; height:4px; border-radius:2px; background:var(--accent); }
+    .tbsize .knob { position:absolute; top:2px; width:14px; height:14px; margin-left:-7px; border-radius:50%; background:#fff; box-shadow:0 1px 4px #0008; }
+    .tbsize b { min-width:36px; text-align:right; font-variant-numeric:tabular-nums; }`;
+  document.head.appendChild(st);
+  const el = document.createElement('div'); el.className = 'tbsize'; el.title = 'Screen size: drag or scroll';
+  el.innerHTML = '<span class="ic">⤢</span><div class="trk"><div class="fill"></div><div class="knob"></div></div><b></b>';
+  $('pc').appendChild(el); // not inside the monitor, so it stays full size when the monitor is zoomed down
+  const trk = el.querySelector('.trk');
+  const show = () => { const f = (settings.pcSize - 25) / 75 * 100; el.querySelector('.fill').style.width = f + '%'; el.querySelector('.knob').style.left = f + '%'; el.querySelector('b').textContent = settings.pcSize + '%'; };
+  const set = v => { v = Math.round(Math.max(25, Math.min(100, v))); if (v !== settings.pcSize) { settings.pcSize = v; applyPcSize(); } show(); };
+  let drag = null;
+  trk.addEventListener('pointerdown', e => {
+    const r = trk.getBoundingClientRect();
+    set(25 + 75 * (e.clientX - r.left) / r.width);
+    drag = { x: e.clientX, v: settings.pcSize, w: r.width };
+    trk.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  trk.addEventListener('pointermove', e => { if (drag) set(drag.v + (e.clientX - drag.x) / drag.w * 75); });
+  const end = () => { if (drag) { drag = null; saveSettings(); } };
+  trk.addEventListener('pointerup', end); trk.addEventListener('pointercancel', end);
+  el.addEventListener('wheel', e => { e.preventDefault(); set(Math.round(settings.pcSize / 5) * 5 + (e.deltaY < 0 ? 5 : -5)); saveSettings(); }, { passive: false });
+  // sit on the right end of the taskbar; the taskbar keeps that much room free
+  const place = () => {
+    const tb = document.querySelector('.taskbar'), z = parseFloat(document.querySelector('#pc .monitor').style.zoom) || 1;
+    tb.style.paddingRight = (el.offsetWidth + 18) / z + 'px';
+    const r = tb.getBoundingClientRect(); if (!r.width) return;
+    el.style.left = r.right - el.offsetWidth - 8 + 'px'; el.style.top = r.top + (r.height - el.offsetHeight) / 2 + 'px';
+  };
+  show();
+  return { show, set, place };
+})();
+applyPcSize();
 function openSettings(from) { settingsBack = from; renderSettings(); showScreen('scSettings'); }
 { const b = document.createElement('button'); b.className = 'btn ghost'; b.textContent = 'Settings'; b.onclick = () => openSettings('scPause'); $('btnQuitTitle').before(b); }
 
 // ---- module API (see cooking.js) ----
 window.NEET = {
   hooks, box, prism, quad, thing, things, env, MIRROR, BATH, walkable, settings, begin, showScreen, renderTitle, lockPointer,
-  get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC,
+  get started() { return started; }, GLOW, sunState, daylight, toast, money, addMoney, save, updateHUD, GAME_MIN_PER_SEC, internetOn, clockStr, dayOf,
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
   setBurnerGlow(c) { burnerGlow = c; },

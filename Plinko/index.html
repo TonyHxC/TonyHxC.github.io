@@ -55,6 +55,7 @@
     background: linear-gradient(90deg, #4d7cff, var(--accent));
     transition: width .25s ease;
   }
+  #progress .fill.hp { background: linear-gradient(90deg, #b3202f, #ff5d73); }
   #progress .fill.done { background: linear-gradient(90deg, #2fcf72, var(--green)); }
   #progress .label {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -62,11 +63,22 @@
   }
   #ballsRow { width: 100%; max-width: 600px; display: flex; gap: 5px; align-items: center; margin-bottom: 6px; min-height: 14px; font-size: 12px; color: var(--muted); }
   .bdot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .movebtn { margin-left: 10px; font: inherit; font-size: 12px; font-weight: 800; color: #0d0b1a; background: var(--green); border: 0; border-radius: 999px; padding: 2px 10px; cursor: pointer; }
   .bdot.used { background: #2f2858; box-shadow: none; }
   #stage { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; }
   #c { display: block; border-radius: 14px; background: #120f26; box-shadow: 0 0 0 1px #2f2858, 0 10px 40px #0008; cursor: crosshair; }
-  #relics { width: 100%; max-width: 600px; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; min-height: 22px; }
-  .relic { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: var(--panel2); border: 1px solid #3a3270; cursor: help; }
+  /* power-ups: a column beside the board (left), newest on top */
+  #relics { position: absolute; top: 0; z-index: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 5px;
+    overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; padding: 8px; } /* padding leaves room for the newest chip's glow */
+  #relics:empty { display: none; }
+  .relic { font-size: 12px; font-weight: 700; padding: 4px 8px; border-radius: 7px; background: var(--panel2); border: 1px solid #3a3270; cursor: help; white-space: nowrap; flex: none; }
+  .relic .lv { margin-left: 5px; font-size: 10px; color: var(--gold); }
+  .relic.new { animation: relicIn .5s ease-out; box-shadow: 0 0 0 1px var(--gold), 0 0 12px #ffd16655; }
+  @keyframes relicIn { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
+  /* no room beside the board (phones): small icon-only chips just inside its left edge */
+  #relics.compact { align-items: flex-start; gap: 3px; }
+  #relics.compact .relic { font-size: 14px; padding: 2px 4px; background: #1a1538cc; }
+  #relics.compact .relic .nm { display: none; }
   .relic.rare { border-color: #4d7cff; }
   .relic.epic { border-color: var(--purple); }
 
@@ -75,6 +87,10 @@
     align-items: center; justify-content: center; padding: 16px;
     background: #0d0b1acc; backdrop-filter: blur(3px); border-radius: 14px; z-index: 5;
   }
+  .overlay.light { background: #0d0b1a66; backdrop-filter: none; }
+  .overlay.light .box { max-width: 420px; background: var(--panel); border: 1px solid #3a3270; border-radius: 14px; padding: 18px 18px 16px; box-shadow: 0 12px 40px #000a; }
+  .goal-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+  .goal-btns .btn { margin: 0; }
   .overlay.show { display: flex; }
   .box { width: 100%; max-width: 520px; text-align: center; max-height: 100%; overflow-y: auto; }
   .box h1 { font-size: 40px; margin: 0 0 4px; letter-spacing: 1px;
@@ -177,6 +193,7 @@
   <div id="progress"><div class="fill" id="progFill"></div><div class="label" id="progLabel">0 / 0</div></div>
   <div id="ballsRow"></div>
   <div id="stage">
+    <div id="relics"></div>
     <canvas id="c" width="600" height="800"></canvas>
 
     <div class="overlay show" id="ovMenu"><div class="box">
@@ -216,7 +233,7 @@
         <div><span class="dot" style="background:var(--green)"></span>Splitter peg: splits the ball in two</div>
         <div><span class="dot" style="background:#4fb3ff"></span>Electric peg: charges the ball; it shoots lightning when it lands</div>
       </div>
-      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Every 5th floor is a boss with a nasty twist.</p>
+      <p>Move to aim, click or tap to drop. Keyboard: ← → and Space.<br>With the <b style="color:var(--gold)">✋ Smack</b> upgrade, swipe your cursor through a falling ball to hit it. Swipe faster to hit harder.<br>Hit the target with balls to spare and you choose: keep dropping for more score, or move on and get +2 ● per unused ball.<br>Every 5th floor is a boss with a nasty twist. Floor 5 is the Hoard Dragon: land balls on his head before he moves. Beat him to unlock gold pegs.<br>More power-ups unlock after floors 5, 10 and 15. Bomb pegs come after floor 10, electric pegs after floor 15.</p>
       <p><a class="link" href="guide.html" target="_blank">Full player guide ↗</a></p>
       <button class="btn" data-back>Back</button>
     </div></div>
@@ -252,6 +269,15 @@
       <button class="btn" data-back>Back</button>
     </div></div>
 
+    <div class="overlay light" id="ovGoal"><div class="box">
+      <h2 style="color:var(--green)">Target hit!</h2>
+      <p id="goalInfo"></p>
+      <div class="goal-btns">
+        <button class="btn secondary" id="btnKeepDropping">Keep dropping</button>
+        <button class="btn" id="btnGoNext">Pick a power-up →</button>
+      </div>
+    </div></div>
+
     <div class="overlay" id="ovReward"><div class="box">
       <h2 id="rewardTitle">Floor cleared!</h2>
       <p id="rewardInfo"></p>
@@ -281,7 +307,6 @@
 
     <div class="toast" id="toast"></div>
   </div>
-  <div id="relics"></div>
 </div>
 
 <script>
@@ -445,6 +470,11 @@ const UPGRADES = [
 ];
 const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
 const RARITY_W = { common: 60, rare: 30, epic: 10 };
+// power-ups that only start showing up once you've cleared a milestone floor
+const UNLOCK = { gold: 5, crit: 5, edge: 5, jackpot: 5, bomb: 10, split: 10, momentum: 10, echo: 10, second: 10, storm: 15 };
+const unlocked = u => (UNLOCK[u.id] || 0) <= (run ? run.floor : 1);
+const GOLD_FROM = 6;  // gold pegs are the dragon's hoard: none until he's beaten on floor 5
+const ELEC_FROM = 16; // electric pegs only after the floor 15 boss
 
 const BOSSES = [
   { id: 'dead',  name: 'Dead Zones',   desc: 'Two buckets pay nothing.' },
@@ -480,8 +510,8 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.ra
 function startFloor(keepLayout) {
   const f = run.floor;
   const isBoss = f % 5 === 0;
-  const boss = keepLayout ? fl.boss : (isBoss ? BOSSES[(Math.random() * BOSSES.length) | 0] : null);
-  let ballsN = 5 + U('extra') + run.bonusBalls - (boss && boss.id === 'lean' ? 1 : 0);
+  const boss = keepLayout ? fl.boss : f === 5 ? DRAGON : (isBoss ? BOSSES[(Math.random() * BOSSES.length) | 0] : null);
+  let ballsN = 5 + U('extra') + run.bonusBalls - (boss && boss.id === 'lean' ? 1 : 0) + (boss && boss.id === 'dragon' ? DRAGON_BALLS : 0);
   if (!keepLayout) run.bonusBalls = 0;
 
   let pegs, mults;
@@ -497,9 +527,9 @@ function startFloor(keepLayout) {
     }
     const dimF = boss && boss.id === 'dim' ? 0.5 : 1;
     const counts = {
-      gold: Math.round((3 + 2 * U('gold')) * dimF),
-      elec: Math.round((2 + U('storm')) * dimF),
-      red: Math.round((1 + U('crit')) * dimF),
+      gold: f >= GOLD_FROM ? Math.round((3 + 2 * U('gold')) * dimF) : 0,
+      elec: f >= ELEC_FROM ? Math.round((2 + U('storm')) * dimF) : 0,
+      red: Math.round(U('crit') * dimF), // red pegs only come from the Red Pegs upgrade
       bomb: Math.round(U('bomb') * dimF),
       split: Math.round(U('split') * dimF),
     };
@@ -518,9 +548,10 @@ function startFloor(keepLayout) {
     }
     mults = mults.map(m => Math.round(m * 10) / 10);
   }
-  fl = { pegs, mults, boss, target: targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
+  fl = { pegs, mults, boss, target: boss && boss.id === 'dragon' ? Math.round(targetFor(f) * DRAGON_HP) : targetFor(f), score: 0, ballsLeft: ballsN, ballsTotal: ballsN, jackFlash: 0, nudges: U('nudge') };
   balls = []; particles = []; texts = []; fire = []; eruptions = []; eruptHoldUntil = 0; bolts = []; zaps = [];
   mode = 'play';
+  dragon = boss && boss.id === 'dragon' ? newDragon() : null;
   for (const p of pegs) p.flash = 0;
   showOverlay(null);
   updateHUD();
@@ -539,7 +570,8 @@ function spawnBall(x, free) {
 
 function drop() {
   if (mode !== 'play' || fl.ballsLeft <= 0 || dropCooldown > 0) return;
-  if (fl.score >= fl.target) return;
+  if (fl.choice || (dragon && dragon.dead)) return;
+  fl.waitDrop = false;
   fl.ballsLeft--;
   dropCooldown = 0.22;
   spawnBall(aimX);
@@ -624,12 +656,14 @@ function settle(b) {
   const i = Math.max(0, Math.min(BUCKET_COUNT - 1, Math.floor((b.x - WALL_L) / bw)));
   const m = fl.mults[i];
   const total = Math.round(b.pts * b.mult * m);
-  fl.score += total;
+  const vsDragon = !!dragon;
+  if (!vsDragon) fl.score += total;
   run.totalScore += total;
   run.bestBall = Math.max(run.bestBall, total);
   const cx = WALL_L + bw * (i + 0.5);
   const col = m === 0 ? '#ff5d73' : m >= 4 ? '#ffd166' : m >= 1 ? '#7cf5ff' : '#9a93c4';
-  addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
+  if (vsDragon) addText(cx, BUCKET_TOP - 10, `${total} · missed him`, '#9a93c4', 14, 1.4);
+  else addText(cx, BUCKET_TOP - 10, `${b.pts}${b.mult !== 1 ? '×' + fmt(b.mult) : ''}×${fmt(m)} = ${total}`, col, total >= fl.target * 0.3 ? 20 : 15, 1.4);
   burst(cx, BUCKET_TOP + 20, col, m >= 4 ? 30 : 12, m >= 4 ? 260 : 140);
   bucketFlash[i] = 1;
   const er = eruptionFor(b, m, total);
@@ -692,14 +726,154 @@ function stepPhysics(dt) {
     if (b.sinceProgress > 1.2) { b.ghost = 0.3; b.vy = Math.max(b.vy, 250); b.sinceProgress = 0; b.maxY = b.y; }
     if (b.age > 25) b.y = BUCKET_TOP + 30;
 
+    if (dragon && dragonHitTest(b)) { dragonHit(b); balls.splice(bi, 1); continue; }
     if (b.y > BUCKET_TOP + 24) { settle(b); balls.splice(bi, 1); }
   }
 }
 
 function checkFloorEnd() {
   if (mode !== 'play' || balls.length || eruptions.length || zaps.length || time < eruptHoldUntil) return;
-  if (fl.score >= fl.target) floorCleared();
+  if (fl.choice || fl.waitDrop) return;
+  if (fl.score >= fl.target) { if (fl.ballsLeft > 0 && !dragon) offerKeepDropping(); else floorCleared(); }
   else if (fl.ballsLeft <= 0) floorFailed();
+}
+// target reached with balls still in hand: keep dropping for score, or move on and bank +2 ● per unused ball
+function offerKeepDropping() {
+  fl.choice = true;
+  const n = fl.ballsLeft, over = fl.score - fl.target;
+  $('goalInfo').innerHTML = `<b style="color:var(--text)">${fl.score.toLocaleString()}</b> / ${fl.target.toLocaleString()}${over > 0 ? ` <span style="color:var(--green)">(+${over.toLocaleString()})</span>` : ''}<br>
+    You have <b style="color:var(--text)">${n} ball${n > 1 ? 's' : ''}</b> left. Keep dropping to pile up score for the leaderboard,
+    or move on now and get <b style="color:var(--gold)">+${n * 2} ●</b> for the unused ball${n > 1 ? 's' : ''}.`;
+  $('btnKeepDropping').textContent = `Keep dropping (${n} left)`;
+  showOverlay('ovGoal');
+  sfx(784, 0.12, 'triangle', 0.06);
+  updateHUD();
+}
+$('btnKeepDropping').onclick = () => { fl.choice = false; fl.waitDrop = true; showOverlay(null); dropCooldown = 0.25; sfx(600, 0.06); updateHUD(); };
+function moveOn() { if (mode !== 'play' || !fl || fl.score < fl.target || balls.length) return; fl.choice = false; fl.waitDrop = false; floorCleared(); }
+$('btnGoNext').onclick = moveOn;
+$('ballsRow').addEventListener('click', e => { if (e.target.id === 'btnMoveOn') moveOn(); });
+
+// ---------- Floor 5 boss: the Hoard Dragon ----------
+// Pops his head out of a bucket and stays 12 s, then 10 s once he's been hit, 8 s after two hits, 7 s after that (fastest).
+// Shakes the board for the last second, then ducks and moves.
+// Only balls that land on his head hurt him: damage = ball points × ball mult × HEAD_MULT. Misses still count for your total.
+const DRAGON = { id: 'dragon', name: 'Hoard Dragon', desc: 'Drop balls on his head to hurt him. He moves every 12 seconds (faster each time you hit him), and shakes the board right before he does.' };
+const DRAGON_STAYS = [12, 10, 8, 7], DRAGON_WARN = 1, DRAGON_RISE = 0.35, DRAGON_SINK = 0.3, HEAD_MULT = 4, DRAGON_BALLS = 3, DRAGON_HP = 0.8, HEAD_R = 26;
+let dragon = null;
+function newDragon() { return { b: (Math.random() * BUCKET_COUNT) | 0, t: 0, phase: 'wait', wait: 0.9, p: 0, hurt: 0, dead: false, deadT: 0, warned: false, blink: 2, hits: 0 }; }
+const dragonStay = () => DRAGON_STAYS[Math.min(dragon.hits, DRAGON_STAYS.length - 1)];
+const bucketX = i => WALL_L + (WALL_R - WALL_L) / BUCKET_COUNT * (i + 0.5);
+function headPos() { return { x: bucketX(dragon.b), y: BUCKET_TOP + 8 - 26 * dragon.p, r: HEAD_R }; }
+function pickNewBucket() {
+  const opts = []; for (let i = 0; i < BUCKET_COUNT; i++) if (Math.abs(i - dragon.b) >= 2) opts.push(i);
+  dragon.b = opts[(Math.random() * opts.length) | 0];
+}
+function updateDragon(dt) {
+  const d = dragon;
+  d.hurt = Math.max(0, d.hurt - dt * 3);
+  d.blink -= dt; if (d.blink < -0.12) d.blink = 1.5 + Math.random() * 2.5;
+  if (d.dead) { d.deadT += dt; d.p = Math.max(0, d.p - dt * 0.8); return; }
+  if (fl.choice) return;
+  if (d.phase === 'wait') { d.wait -= dt; if (d.wait <= 0) { d.phase = 'rise'; sfx(150, 0.25, 'sawtooth', 0.05); } }
+  else if (d.phase === 'rise') { d.p = Math.min(1, d.p + dt / DRAGON_RISE); if (d.p >= 1) { d.phase = 'up'; d.t = 0; d.warned = false; } }
+  else if (d.phase === 'up') {
+    d.t += dt;
+    if (d.t > dragonStay() - DRAGON_WARN) {
+      // about to move: he thrashes and the whole board shakes, jostling balls in flight
+      if (!d.warned) { d.warned = true; sfxNoise(1, 0.08, 220); sfx(70, 0.9, 'sawtooth', 0.07); }
+      shake = Math.max(shake, 7);
+      for (const b of balls) { b.vx += (Math.random() - 0.5) * 1400 * dt; b.vy += (Math.random() - 0.6) * 500 * dt; }
+    }
+    if (d.t >= dragonStay()) d.phase = 'sink';
+  } else if (d.phase === 'sink') {
+    d.p = Math.max(0, d.p - dt / DRAGON_SINK);
+    if (d.p <= 0) { pickNewBucket(); d.phase = 'wait'; d.wait = 0.25; }
+  }
+}
+function dragonHitTest(b) {
+  if (dragon.dead || dragon.p < 0.55) return false;
+  const h = headPos();
+  return Math.hypot(b.x - h.x, b.y - h.y) < b.r + h.r;
+}
+function dragonHit(b) {
+  const h = headPos();
+  const dmg = Math.max(1, Math.round(b.pts * b.mult * HEAD_MULT));
+  fl.score += dmg; run.totalScore += dmg; run.bestBall = Math.max(run.bestBall, dmg);
+  run.coins += 2; // knocks a little gold loose
+  dragon.hurt = 1; dragon.hits++;
+  addText(h.x, h.y - 34, `BONK! -${dmg.toLocaleString()}`, '#ff5d73', 22, 1.5);
+  addText(h.x, h.y - 12, '+2 ●', '#ffd166', 13);
+  burst(h.x, h.y, '#ffd166', 26, 260); burst(h.x, h.y, '#ff5d73', 14, 180);
+  shake = Math.max(shake, 12);
+  sfx(110, 0.25, 'square', 0.1); setTimeout(() => sfx(70, 0.4, 'sawtooth', 0.08), 80);
+  if (fl.score >= fl.target) {
+    dragon.dead = true;
+    run.coins += 10;
+    eruptHoldUntil = Math.max(eruptHoldUntil, time + 1.6);
+    for (let i = 0; i < 4; i++) setTimeout(() => burst(h.x + (Math.random() - 0.5) * 60, h.y - Math.random() * 40, i % 2 ? '#ffd166' : '#ff9a3c', 40, 340), i * 180);
+    sfx(523, 0.2, 'triangle', 0.08); setTimeout(() => sfx(659, 0.2, 'triangle', 0.08), 140); setTimeout(() => sfx(1046, 0.4, 'triangle', 0.08), 280);
+    toast('🐉 The Hoard Dragon is slain! +10 ●', 2200);
+  } else if (dragon.phase === 'up' || dragon.phase === 'rise') {
+    dragon.phase = 'sink'; // ducks after getting bonked, then pops up somewhere else
+  }
+  updateHUD();
+}
+function drawDragon() {
+  const d = dragon, bw = (WALL_R - WALL_L) / BUCKET_COUNT;
+  if (d.p <= 0.01) return;
+  const h = headPos(), x = h.x, y = h.y + (d.dead ? Math.sin(d.deadT * 20) * 2 : 0);
+  const thrash = d.phase === 'up' && d.t > dragonStay() - DRAGON_WARN ? Math.sin(time * 40) * 3 : 0;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(WALL_L + d.b * bw - 6, 0, bw + 12, H - 10); ctx.clip();
+  ctx.translate(x + thrash, y); ctx.rotate(thrash * 0.03); ctx.scale(HEAD_R / 21, HEAD_R / 21);
+  const skin = d.hurt > 0 ? '#ff7a7a' : '#2fa25e', dark = d.hurt > 0 ? '#c0404a' : '#1d6e3e', belly = '#9fe0a8';
+  // neck down into the bucket
+  ctx.fillStyle = skin; roundRect(-12, 6, 24, H, 10); ctx.fill();
+  ctx.fillStyle = belly; roundRect(-6, 12, 12, H, 6); ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 1.5;
+  for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(-6, 20 + k * 9); ctx.lineTo(6, 20 + k * 9); ctx.stroke(); }
+  // horns (gold, he's a hoarder)
+  ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#b8862a'; ctx.lineWidth = 1;
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * 9, -13); ctx.quadraticCurveTo(sx * 22, -26, sx * 19, -34); ctx.quadraticCurveTo(sx * 15, -22, sx * 3, -15); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  // head
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(0, -2, 21, 17, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 2; ctx.stroke();
+  // crest
+  ctx.fillStyle = dark;
+  for (const sx of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(sx - 3, -17); ctx.lineTo(sx, -24); ctx.lineTo(sx + 3, -17); ctx.closePath(); ctx.fill(); }
+  // snout + nostrils (smoke when angry)
+  ctx.fillStyle = '#4cc77a'; ctx.beginPath(); ctx.ellipse(0, 8, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#0d3b20'; ctx.beginPath(); ctx.arc(-4, 6, 1.8, 0, 7); ctx.arc(4, 6, 1.8, 0, 7); ctx.fill();
+  // teeth
+  ctx.fillStyle = '#fff';
+  for (const sx of [-7, 7]) { ctx.beginPath(); ctx.moveTo(sx - 2.5, 14); ctx.lineTo(sx, 19); ctx.lineTo(sx + 2.5, 14); ctx.closePath(); ctx.fill(); }
+  // eyes: glow red when he's about to move, X when dead
+  const angry = d.phase === 'up' && d.t > dragonStay() - DRAGON_WARN;
+  for (const sx of [-1, 1]) {
+    const ex = sx * 9, ey = -5;
+    if (d.dead) { ctx.strokeStyle = '#0d3b20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex - 3, ey - 3); ctx.lineTo(ex + 3, ey + 3); ctx.moveTo(ex + 3, ey - 3); ctx.lineTo(ex - 3, ey + 3); ctx.stroke(); continue; }
+    if (d.blink < 0) { ctx.strokeStyle = '#0d3b20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex - 4, ey); ctx.lineTo(ex + 4, ey); ctx.stroke(); continue; }
+    ctx.fillStyle = angry ? '#ff3b3b' : '#ffe66b';
+    if (angry) { ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 10; }
+    ctx.beginPath(); ctx.ellipse(ex, ey, 4.5, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(ex, ey, 1.3, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0d3b20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex - sx * 4, ey - 5); ctx.lineTo(ex + sx * 6, ey - 10); ctx.stroke(); // angry brow
+  }
+  ctx.restore();
+  // a glint of his hoard in the bucket
+  if (!d.dead) {
+    ctx.fillStyle = '#ffd166'; ctx.globalAlpha = 0.85;
+    const bx = bucketX(d.b);
+    for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.ellipse(bx - 15 + k * 7.5, H - 16 - (k % 2) * 4, 4, 2.4, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+  // countdown ring above his head so you can time drops
+  if (d.phase === 'up' && !d.dead) {
+    const st = dragonStay(), left = 1 - d.t / st;
+    ctx.strokeStyle = left < DRAGON_WARN / st ? '#ff5d73' : '#ffd166'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(h.x, h.y - 44, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+  }
 }
 
 // ---------- Floor end ----------
@@ -715,8 +889,12 @@ function floorCleared() {
   const parts = [`+3 ● for clearing`];
   if (unused) parts.push(`+${unused * 2} ● for ${unused} unused ball${unused > 1 ? 's' : ''}`);
   if (interest) parts.push(`+${interest} ● interest`);
-  $('rewardTitle').textContent = `Floor ${run.floor} cleared!`;
-  $('rewardInfo').innerHTML = `${parts.join(' · ')}<br>Choose an upgrade. Next target: <b style="color:var(--text)">${targetFor(run.floor + 1)}</b>${(run.floor + 1) % 5 === 0 ? ' <b style="color:var(--red)">(BOSS)</b>' : ''}`;
+  $('rewardTitle').textContent = dragon ? 'The Hoard Dragon is slain!' : `Floor ${run.floor} cleared!`;
+  const newUps = UPGRADES.filter(u => UNLOCK[u.id] === run.floor);
+  if (newUps.length) parts.push(`<br><b style="color:var(--gold)">New power-ups unlocked:</b> ${newUps.map(u => u.icon + ' ' + u.name).join(', ')}`);
+  if (run.floor === GOLD_FROM - 1) parts.push(`<br><b style="color:var(--gold)">✦ Gold pegs</b> spill out of his hoard from now on.`);
+  if (run.floor === ELEC_FROM - 1) parts.push(`<br><b style="color:#4fb3ff">ϟ Electric pegs</b> crackle onto the board from now on.`);
+  $('rewardInfo').innerHTML = `${parts.join(' · ').replace(/ · <br>/g, '<br>')}<br>Choose an upgrade. Next target: <b style="color:var(--text)">${targetFor(run.floor + 1)}</b>${(run.floor + 1) % 5 === 0 ? ' <b style="color:var(--red)">(BOSS)</b>' : ''}`;
   sfx(784, 0.15, 'triangle', 0.08); setTimeout(() => sfx(1046, 0.25, 'triangle', 0.08), 120);
   rollOffer();
   if (NEET && neet.active) {
@@ -778,7 +956,7 @@ function saveBest() {
 }
 
 function rollOffer() {
-  const avail = UPGRADES.filter(u => U(u.id) < u.max);
+  const avail = UPGRADES.filter(u => U(u.id) < u.max && unlocked(u));
   offer = [];
   const pool = avail.slice();
   while (offer.length < 3 && pool.length) {
@@ -811,6 +989,7 @@ function refreshShopButtons() {
 
 function takeUpgrade(id) {
   run.up[id] = U(id) + 1;
+  run.order = [id, ...(run.order || []).filter(x => x !== id)]; // newest on top
   sfx(988, 0.12, 'square', 0.04);
   nextFloor();
 }
@@ -829,7 +1008,7 @@ let afterName = null;   // action to run once a name is saved
 function runInProgress() { return paused && (paused.mode === 'play' || paused.mode === 'reward'); }
 function openMenu() {
   if (mode === 'play' || mode === 'reward') {
-    paused = { mode, overlay: mode === 'reward' ? 'ovReward' : null };
+    paused = { mode, overlay: mode === 'reward' ? 'ovReward' : fl && fl.choice ? 'ovGoal' : null };
     mode = 'paused';
   }
   if (mode === 'over') paused = null;
@@ -900,7 +1079,7 @@ $('nameForm').onsubmit = e => {
 
 // ---------- UI ----------
 function showOverlay(id) {
-  for (const o of ['ovMenu', 'ovName', 'ovHelp', 'ovBall', 'ovBoard', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
+  for (const o of ['ovMenu', 'ovName', 'ovHelp', 'ovBall', 'ovBoard', 'ovGoal', 'ovReward', 'ovOver']) $(o).classList.toggle('show', o === id);
 }
 let toastTimer = null;
 function toast(html, ms = 1800) {
@@ -914,24 +1093,40 @@ function updateHUD() {
   $('coinLabel').textContent = `● ${run.coins}`;
   if (fl) {
     const pct = Math.min(100, fl.score / fl.target * 100);
-    $('progFill').style.width = pct + '%';
     $('progFill').classList.toggle('done', fl.score >= fl.target);
-    $('progLabel').textContent = `${fl.score.toLocaleString()} / ${fl.target.toLocaleString()}`;
+    $('progFill').classList.toggle('hp', !!dragon);
+    if (dragon) {
+      const hp = Math.max(0, fl.target - fl.score);
+      $('progFill').style.width = (100 - pct) + '%';
+      $('progLabel').textContent = hp ? `🐉 Dragon HP ${hp.toLocaleString()} / ${fl.target.toLocaleString()}` : '🐉 Defeated!';
+    } else {
+      $('progFill').style.width = pct + '%';
+      $('progLabel').textContent = `${fl.score.toLocaleString()} / ${fl.target.toLocaleString()}`;
+    }
     const row = $('ballsRow');
     let html = '';
     for (let i = 0; i < fl.ballsTotal; i++) html += `<div class="bdot ${i < fl.ballsTotal - fl.ballsLeft ? 'used' : ''}"></div>`;
     row.innerHTML = html + `<span style="margin-left:6px">${fl.ballsLeft} ball${fl.ballsLeft === 1 ? '' : 's'} left</span>` +
+      (fl.waitDrop && fl.score >= fl.target ? `<button class="movebtn" id="btnMoveOn" title="Stop here and pick a power-up">Next floor →</button>` : '') +
       (U('nudge') ? `<span style="margin-left:auto;color:${fl.nudges ? 'var(--gold)' : 'var(--muted)'};font-weight:800" title="Smacks left this floor">✋ ${fl.nudges}/${U('nudge')}</span>` : '');
   }
   const rel = $('relics');
-  rel.innerHTML = '';
-  for (const u of UPGRADES) {
-    if (!U(u.id)) continue;
-    const el = document.createElement('div');
-    el.className = 'relic ' + u.rarity;
-    el.title = `${u.name} (Lv ${U(u.id)}): ${u.desc}`;
-    el.textContent = `${u.icon} ${u.name}${U(u.id) > 1 ? ' ' + U(u.id) : ''}`;
-    rel.appendChild(el);
+  // newest first: run.order lists ids most-recently-taken first (owned ones missing from it go last)
+  const order = (run && run.order ? run.order : []).filter(id => U(id));
+  for (const u of [...UPGRADES].reverse()) if (U(u.id) && !order.includes(u.id)) order.push(u.id);
+  const sig = order.map(id => id + U(id)).join(',');
+  if (rel.dataset.sig !== sig) {
+    const newest = rel.dataset.sig !== undefined && order[0] && !rel.dataset.sig.startsWith(order[0] + U(order[0]));
+    rel.dataset.sig = sig; rel.innerHTML = '';
+    order.forEach((id, i) => {
+      const u = UPGRADES.find(x => x.id === id); if (!u) return;
+      const el = document.createElement('div');
+      el.className = 'relic ' + u.rarity + (i === 0 && newest ? ' new' : '');
+      el.title = `${u.name} (Lv ${U(u.id)}): ${u.desc}`;
+      el.innerHTML = `${u.icon}<span class="nm"> ${u.name}</span>${U(u.id) > 1 ? `<span class="lv">Lv${U(u.id)}</span>` : ''}`;
+      rel.appendChild(el);
+    });
+    placeRelics();
   }
 }
 
@@ -945,6 +1140,25 @@ function fitCanvas() {
   canvas.width = Math.round(W * scale * dpr);
   canvas.height = Math.round(H * scale * dpr);
   ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  placeRelics();
+}
+// power-up column: in the gap left of the board when there's room, otherwise icon-only just inside the board's left edge
+function placeRelics() {
+  const rel = $('relics'), stage = $('stage'); if (!rel) return;
+  const cw = parseFloat(canvas.style.width) || W, ch = parseFloat(canvas.style.height) || H;
+  const left = (stage.clientWidth - cw) / 2, room = left - 12;
+  // try the full chips beside the board; measure the widest one and fall back to icons if it doesn't fit
+  rel.classList.remove('compact');
+  rel.style.left = ''; rel.style.maxWidth = 'none'; rel.style.right = `calc(50% + ${cw / 2}px)`;
+  rel.style.top = '-8px'; rel.style.maxHeight = (ch + 16) + 'px';
+  let need = 0; for (const el of rel.children) need = Math.max(need, el.offsetWidth);
+  if (need + 16 <= room) { rel.style.maxWidth = room + 'px'; return; }
+  // icons beside the board if they fit there, else just inside its left edge
+  rel.classList.add('compact');
+  need = 0; for (const el of rel.children) need = Math.max(need, el.offsetWidth);
+  if (need + 16 <= room) { rel.style.right = `calc(50% + ${cw / 2 - 2}px)`; rel.style.maxWidth = room + 'px'; return; }
+  rel.style.right = ''; rel.style.maxWidth = '';
+  rel.style.left = Math.max(0, left) + 'px'; rel.style.top = (ch * 0.12 - 8) + 'px'; rel.style.maxHeight = (ch * 0.74) + 'px';
 }
 window.addEventListener('resize', fitCanvas);
 
@@ -1505,6 +1719,8 @@ function draw() {
     ctx.fillText(m === 0 ? '✕' : '×' + fmt(m), x + bw / 2, BUCKET_TOP + 40);
   }
 
+  if (dragon) drawDragon();
+
   // fire (ball flames + eruptions), additive
   drawFire();
   drawElectric();
@@ -1624,6 +1840,7 @@ function update(dt) {
     const SUB = 6;
     for (let i = 0; i < SUB; i++) stepPhysics(dt / SUB);
     for (const b of balls) { b.trail.push({ x: b.x, y: b.y }); if (b.trail.length > 10) b.trail.shift(); igniteCheck(b); emitBallFire(b, dt); }
+    if (dragon) updateDragon(dt);
     checkFloorEnd();
   }
   if (mode !== 'paused') { updateFire(dt); if (fl) updateElectric(dt); }
@@ -1664,6 +1881,20 @@ window.__plinko = {
   get state() { return { mode, run, fl, balls: balls.length }; },
   get balls() { return balls; },
   testSmack,
+  take(id) { takeUpgrade(id); },
+  goFloor(f) { run.floor = f; startFloor(); },
+  get dragon() { return dragon; },
+  simDragon(upgrades = {}, smart = true) { // headless: floor 5 with an AI that aims at the head right after it pops up
+    run = { floor: 5, coins: 0, up: { ...upgrades }, bonusBalls: 0, secondUsed: true, totalScore: 0, bestBall: 0, rerolls: 0 };
+    startFloor(); let hits = 0, steps = 0; const dt = 1 / 360;
+    const realHit = dragonHit; 
+    while ((fl.ballsLeft > 0 || balls.length) && !dragon.dead && steps < 360 * 200) {
+      if (balls.length === 0 && fl.ballsLeft > 0 && (!smart || (dragon.phase === 'up' && dragon.t < 0.6))) { aimX = clampAim(smart ? bucketX(dragon.b) + (Math.random() - 0.5) * 30 : 20 + Math.random() * 560); fl.ballsLeft--; spawnBall(aimX); }
+      const before = fl.score; stepPhysics(dt); updateDragon(dt); time += dt; if (fl.score > before) hits++; steps++;
+    }
+    const r = { hp: fl.target, dmg: fl.score, hits, dead: dragon.dead, balls: fl.ballsTotal }; mode = 'menu'; showOverlay('ovMenu'); return r;
+  },
+  setHead(i) { if (dragon) { dragon.b = i; dragon.phase = 'up'; dragon.p = 1; dragon.t = 0; } },
   get fireCount() { return fire.length; },
   ignite(m) { const b = balls[balls.length - 1]; if (b) b.mult = m; },
   erupt(i, tier, power) { startEruption(i, tier, power); },

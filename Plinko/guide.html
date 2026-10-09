@@ -31,6 +31,7 @@
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
     padding: 20px; margin: 16px 0; }
   h2 { margin: 0 0 10px; font-size: 22px; }
+  h3 { margin: 16px 0 6px; font-size: 17px; }
   p { margin: 8px 0; color: #d4cff5; }
   ul { padding-left: 20px; margin: 8px 0; } li { margin: 4px 0; color: #d4cff5; }
   b, strong { color: var(--text); }
@@ -91,7 +92,7 @@
       <div class="bk" style="color:var(--accent)">×2</div><div class="bk" style="color:#ffb347">×4</div>
       <div class="bk" style="color:var(--gold)">×8</div>
     </div>
-    <p>You get <b>5 balls</b> per floor. Floor 1 needs <b>140</b> points, and each floor needs about 27% more than the last (floor 5 ≈ 420, floor 10 ≈ 1,390). Every 5th floor is a boss floor.</p>
+    <p>You get <b>5 balls</b> per floor. Floor 1 needs <b>140</b> points, and each floor needs about 27% more than the last (floor 10 ≈ 1,390). Every 5th floor is a boss floor, and floor 5 is always the <b>Hoard Dragon</b>.</p>
   </section>
 
   <section id="pegs">
@@ -100,18 +101,18 @@
     <div class="table-wrap"><table>
       <tr><th>Peg</th><th>What it does</th></tr>
       <tr><td><span class="dot" style="background:#cfc8ff"></span><b>Normal</b></td><td>+1 point per hit (more with Heavy Ball)</td></tr>
-      <tr><td><span class="dot" style="background:var(--gold)"></span><b>Gold</b></td><td>Triple points, +1 coin, and electrifies the ball (up to ⚡5). A charged ball sends lightning chaining up the pegs when it lands</td></tr>
-      <tr><td><span class="dot" style="background:var(--red)"></span><b>Red</b></td><td>Doubles that ball's multiplier. Reds stack: ×2, ×4, ×8…</td></tr>
+      <tr><td><span class="dot" style="background:var(--gold)"></span><b>Gold</b></td><td>Triple points and +1 coin. <b>Only from floor 6</b>, once you've beaten the Hoard Dragon and his gold spills out</td></tr>
+      <tr><td><span class="dot" style="background:var(--red)"></span><b>Red</b></td><td>Doubles that ball's multiplier. Reds stack: ×2, ×4, ×8… Only from the Red Pegs upgrade</td></tr>
       <tr><td><span class="dot" style="background:var(--orange)"></span><b>Bomb</b></td><td>Instantly scores every peg nearby for that ball</td></tr>
       <tr><td><span class="dot" style="background:var(--green)"></span><b>Splitter</b></td><td>Splits the ball in two, sharing its points so far (max 8 clones)</td></tr>
     </table></div>
     <p><b>Fire!</b> A ball whose multiplier reaches ×4 catches fire, at ×8 it burns blue, and at ×16 it becomes a purple inferno. The bucket erupts in a column of fire when a burning ball lands in a ×4 or bigger bucket, or when any ball scores at least 50% of the floor's target. Bigger scores make bigger eruptions, and a ball that clears the floor on its own erupts blue.</p>
-    <p>Every floor starts with 3 gold pegs and 1 red peg. Bombs and splitters only appear once you take their upgrades.</p>
+    <p>The board starts with plain pegs only. <b>Red pegs</b> only come from the Red Pegs upgrade (1 per level, unlocks after floor 5). The rest arrive as you climb: <b>gold pegs</b> (3 per floor) start on floor 6, after the dragon; <b>bomb pegs</b> can be unlocked after the floor 10 boss; <b>electric pegs</b> (2 per floor, they charge the ball, and a charged ball sends lightning up the pegs when it lands) start on floor 16. Bombs and splitters only appear once you take their upgrades.</p>
   </section>
 
   <section id="between">
     <h2>Between floors</h2>
-    <p>Once you hit the target, the floor ends when your last ball lands. Unused balls are worth coins, so stop dropping once you're there.</p>
+    <p>Once you hit the target and every ball on the board has landed, you choose: <b>Keep dropping</b> to pile up more score for the leaderboard, or <b>Pick a power-up</b> and move on. Every ball you don't drop is worth 2 coins, so it's score vs coins. If you change your mind while dropping, the <b>Next floor →</b> button next to your balls ends the floor.</p>
     <p><b>Coins you earn</b></p>
     <ul>
       <li>+3 for clearing the floor</li>
@@ -129,31 +130,42 @@
 
   <section id="upgrades">
     <h2>Upgrades</h2>
-    <p>16 upgrades, most stackable up to a max level. Commons show up most often, rares less, and epics are rare finds.</p>
+    <p>17 upgrades, most stackable up to a max level. Some only start showing up after you clear floor 5, 10 or 15. Commons show up most often, rares less, and epics are rare finds.</p>
     <div class="table-wrap"><table>
-      <tr><th>Upgrade</th><th>Rarity</th><th>Max</th><th>Effect per level</th></tr>
-      <tr><td><b>⬤ Heavy Ball</b></td><td class="tag common">Common</td><td>6</td><td>+1 point for every peg hit</td></tr>
-      <tr><td><b>✦ Gold Rush</b></td><td class="tag common">Common</td><td>6</td><td>+2 gold pegs on every floor</td></tr>
-      <tr><td><b>◉ Big Ball</b></td><td class="tag common">Common</td><td>2</td><td>Bigger balls that hit more pegs</td></tr>
-      <tr><td><b>◎ Rubber Ball</b></td><td class="tag common">Common</td><td>3</td><td>Bouncier balls that stay on the board longer</td></tr>
-      <tr><td><b>▣ Safe Middle</b></td><td class="tag common">Common</td><td>5</td><td>The 3 middle buckets get +0.6×</td></tr>
-      <tr><td><b>✋ Smack</b></td><td class="tag common">Common</td><td>5</td><td>+1 smack per floor: swipe through a falling ball to hit it, harder the faster you swipe</td></tr>
-      <tr><td><b>¢ Interest</b></td><td class="tag common">Common</td><td>3</td><td>After each floor, +1 coin per 5 you hold (up to +3)</td></tr>
-      <tr><td><b>✚ Red Pegs</b></td><td class="tag rare">Rare</td><td>5</td><td>+1 red peg per floor</td></tr>
-      <tr><td><b>✹ Bomb Pegs</b></td><td class="tag rare">Rare</td><td>4</td><td>+1 bomb peg per floor</td></tr>
-      <tr><td><b>⑂ Splitter</b></td><td class="tag rare">Rare</td><td>4</td><td>+1 splitter peg per floor</td></tr>
-      <tr><td><b>+ Extra Ball</b></td><td class="tag rare">Rare</td><td>4</td><td>+1 ball on every floor</td></tr>
-      <tr><td><b>⇔ Edge Lord</b></td><td class="tag rare">Rare</td><td>3</td><td>The 2 outer buckets on each side get +100%</td></tr>
-      <tr><td><b>★ Lucky Bucket</b></td><td class="tag rare">Rare</td><td>3</td><td>A random bucket gets +5× each floor</td></tr>
-      <tr><td><b>» Momentum</b></td><td class="tag epic">Epic</td><td>3</td><td>Every 8 peg hits, the ball gains +0.25×</td></tr>
-      <tr><td><b>∞ Echo</b></td><td class="tag epic">Epic</td><td>2</td><td>25% chance a dropped ball is followed by a free copy</td></tr>
-      <tr><td><b>♥ Second Wind</b></td><td class="tag epic">Epic</td><td>1</td><td>Once per run, retry a floor you failed</td></tr>
+      <tr><th>Upgrade</th><th>Rarity</th><th>Max</th><th>Unlocks</th><th>Effect per level</th></tr>
+      <tr><td><b>⬤ Heavy Ball</b></td><td class="tag common">Common</td><td>6</td><td>Start</td><td>+1 point for every peg hit</td></tr>
+      <tr><td><b>✦ Gold Rush</b></td><td class="tag common">Common</td><td>6</td><td><b>After floor 5</b></td><td>+2 gold pegs on every floor</td></tr>
+      <tr><td><b>◉ Big Ball</b></td><td class="tag common">Common</td><td>2</td><td>Start</td><td>Bigger balls that hit more pegs</td></tr>
+      <tr><td><b>◎ Rubber Ball</b></td><td class="tag common">Common</td><td>3</td><td>Start</td><td>Bouncier balls that stay on the board longer</td></tr>
+      <tr><td><b>▣ Safe Middle</b></td><td class="tag common">Common</td><td>5</td><td>Start</td><td>The 3 middle buckets get +0.6×</td></tr>
+      <tr><td><b>✋ Smack</b></td><td class="tag common">Common</td><td>5</td><td>Start</td><td>+1 smack per floor: swipe through a falling ball to hit it, harder the faster you swipe</td></tr>
+      <tr><td><b>¢ Interest</b></td><td class="tag common">Common</td><td>3</td><td>Start</td><td>After each floor, +1 coin per 5 you hold (up to +3)</td></tr>
+      <tr><td><b>✚ Red Pegs</b></td><td class="tag rare">Rare</td><td>5</td><td><b>After floor 5</b></td><td>+1 red peg per floor</td></tr>
+      <tr><td><b>✹ Bomb Pegs</b></td><td class="tag rare">Rare</td><td>4</td><td><b>After floor 10</b></td><td>+1 bomb peg per floor</td></tr>
+      <tr><td><b>ϟ Storm Pegs</b></td><td class="tag rare">Rare</td><td>4</td><td><b>After floor 15</b></td><td>+1 electric peg per floor. Electric pegs charge the ball, and a charged ball unleashes lightning when it lands</td></tr>
+      <tr><td><b>⑂ Splitter</b></td><td class="tag rare">Rare</td><td>4</td><td><b>After floor 10</b></td><td>+1 splitter peg per floor</td></tr>
+      <tr><td><b>+ Extra Ball</b></td><td class="tag rare">Rare</td><td>4</td><td>Start</td><td>+1 ball on every floor</td></tr>
+      <tr><td><b>⇔ Edge Lord</b></td><td class="tag rare">Rare</td><td>3</td><td><b>After floor 5</b></td><td>The 2 outer buckets on each side get +100%</td></tr>
+      <tr><td><b>★ Lucky Bucket</b></td><td class="tag rare">Rare</td><td>3</td><td><b>After floor 5</b></td><td>A random bucket gets +5× each floor</td></tr>
+      <tr><td><b>» Momentum</b></td><td class="tag epic">Epic</td><td>3</td><td><b>After floor 10</b></td><td>Every 8 peg hits, the ball gains +0.25×</td></tr>
+      <tr><td><b>∞ Echo</b></td><td class="tag epic">Epic</td><td>2</td><td><b>After floor 10</b></td><td>25% chance a dropped ball is followed by a free copy</td></tr>
+      <tr><td><b>♥ Second Wind</b></td><td class="tag epic">Epic</td><td>1</td><td><b>After floor 10</b></td><td>Once per run, retry a floor you failed</td></tr>
     </table></div>
   </section>
 
   <section id="bosses">
     <h2>Boss floors</h2>
-    <p>Floors 5, 10, 15 and so on have a 15% higher target and one random twist, shown under the floor number.</p>
+    <h3>Floor 5: the Hoard Dragon 🐉</h3>
+    <p>A gold-hoarding dragon guards floor 5. Instead of a score target he has a <b>health bar</b>, and only balls that <b>land on his head</b> hurt him.</p>
+    <ul>
+      <li>He pokes his head out of a random bucket, stays <b>12 seconds</b>, then ducks and pops up in a different bucket. A ring above his head counts down. Every hit makes him faster: <b>10 s</b> after the first hit, <b>8 s</b> after the second, then <b>7 s</b> (his fastest).</li>
+      <li>In his last second his eyes glow red and he <b>shakes the whole board</b>, knocking falling balls around.</li>
+      <li>A head hit deals the ball's points × its multiplier × 4 as damage, knocks loose +2 coins, and makes him duck and move.</li>
+      <li>Balls that miss still score for your total, but don't hurt him. You get <b>3 extra balls</b> for this fight.</li>
+      <li>Beat him for +10 coins and his hoard: <b>gold pegs</b> appear from floor 6 on, and four new power-ups unlock.</li>
+    </ul>
+    <h3>Floors 10, 15, 20…</h3>
+    <p>These have a 15% higher target and one random twist, shown under the floor number.</p>
     <div class="table-wrap"><table>
       <tr><th>Boss</th><th>Twist</th></tr>
       <tr><td><b>Dead Zones</b></td><td>Two buckets pay nothing (marked ✕)</td></tr>
@@ -167,11 +179,12 @@
     <h2>Tips</h2>
     <ul>
       <li><b>Aim for the edges.</b> The ×8 buckets pay 20 times the middle ×0.4. Edge Lord and Lucky Bucket make edge shots even better.</li>
-      <li><b>Red pegs are the biggest multiplier.</b> One doubles the ball's score; two make it ×4. Red Pegs is the strongest early pick.</li>
+      <li><b>Red pegs are the biggest multiplier.</b> One doubles the ball's score; two make it ×4. Red Pegs is the strongest pick once it unlocks after floor 5.</li>
       <li><b>Points before multipliers.</b> Heavy Ball and Bomb Pegs raise the base number every multiplier works on.</li>
       <li><b>Smack late.</b> A smack near the bottom rows can steer a ball from a ×0.4 bucket into a ×2. Save it for the last few rows.</li>
-      <li><b>Save your balls.</b> Each unused ball is worth 2 coins.</li>
-      <li><b>Buy balls before bosses.</b> A +1 ball buy helps going into floors 5, 10 and 15, especially against Lean Times.</li>
+      <li><b>Score or coins?</b> Each ball you don't drop after hitting the target is worth 2 coins. Keep dropping only when you'd rather climb the leaderboard.</li>
+      <li><b>Dragon timing.</b> Drop right after he pops up so the ball arrives before he moves, and don't drop during his shake.</li>
+      <li><b>Buy balls before bosses.</b> A +1 ball buy helps going into the dragon on floor 5 and the bosses on 10 and 15, especially against Lean Times.</li>
       <li><b>Your best run is saved</b> on the start screen, so you know what to beat.</li>
     </ul>
   </section>
