@@ -1,4 +1,5 @@
-// Pogey Life — the TV plays YouTube. Press E on the TV for the remote: power, channels, add your own links, volume.
+// Pogey Life — the TV plays YouTube. Press E on the TV for the remote: power, channels up / down, pause, skip ±10 s,
+// next / previous video in playlists, add your own links, volume.
 // The player is a normal YouTube embed laid over the 3D screen with a CSS perspective transform, so it sits on the
 // TV as you walk around. It gets quieter the further away you are and pauses when the game is paused.
 // Note: YouTube refuses to play inside a page opened straight from disk (file://): the browser sends no Referer and
@@ -75,7 +76,7 @@ function setSource(src) {
   if (src === frameSrc) return;
   frameSrc = src;
   if (frame) { frame.remove(); frame = null; }
-  lastVol = -1; lastPlay = null;
+  lastVol = -1; lastPlay = null; userPaused = false; yt = freshYT();
   if (!src) return;
   if (location.protocol === 'file:') { // YouTube would only show "Error 153" here: say what's actually wrong
     frame = document.createElement('div');
@@ -89,8 +90,39 @@ function setSource(src) {
   frame.referrerPolicy = 'strict-origin-when-cross-origin';
   frame.style.cssText = 'border:0;width:100%;height:100%;display:block;pointer-events:none';
   frame.src = src;
-  frame.onload = () => { lastVol = -1; lastPlay = null; };
+  frame.onload = () => { lastVol = -1; lastPlay = null; listen(); };
   wrap.appendChild(frame);
+}
+// what the player tells us (YouTube's iframe API over postMessage): time, length, title, playlist position
+const freshYT = () => ({ got: false, t: 0, at: 0, state: -1, dur: 0, title: '', list: null, idx: -1, asked: 0 });
+let yt = freshYT(), userPaused = false;
+function listen() { yt.asked = performance.now(); try { frame && frame.contentWindow && frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch (e) {} }
+window.addEventListener('message', e => {
+  if (!frame || !frame.contentWindow || e.source !== frame.contentWindow) return;
+  let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (er) { return; }
+  const i = d && d.info; if (!i || typeof i !== 'object') return;
+  yt.got = true;
+  if (typeof i.currentTime === 'number') { yt.t = i.currentTime; yt.at = performance.now(); }
+  if (typeof i.playerState === 'number') yt.state = i.playerState;
+  if (i.duration) yt.dur = i.duration;
+  if (i.videoData && i.videoData.title) yt.title = i.videoData.title;
+  if (Array.isArray(i.playlist)) yt.list = i.playlist;
+  if (typeof i.playlistIndex === 'number') yt.idx = i.playlistIndex;
+});
+const ytNow = () => yt.state === 1 ? yt.t + (performance.now() - yt.at) / 1000 : yt.t;
+const isPlaylist = () => { const c = current(), v = c && parseYT(c.url); return !!(v && v.list) || (yt.list && yt.list.length > 1); };
+function seek(dt) {
+  if (!frame || !frame.contentWindow) return;
+  const t = Math.max(0, Math.min(yt.dur ? yt.dur - 0.5 : 1e9, ytNow() + dt));
+  cmd('seekTo', [t, true]); yt.t = t; yt.at = performance.now();
+  flash(dt > 0 ? `+${dt} s` : `${dt} s`);
+}
+function togglePause() { if (!current()) return; userPaused = !userPaused; flash(userPaused ? 'Paused' : 'Playing'); }
+function skipVideo(dir) { if (!isPlaylist()) return; cmd(dir > 0 ? 'nextVideo' : 'previousVideo'); userPaused = false; lastPlay = null; flash(dir > 0 ? 'Next video' : 'Previous video'); }
+function channelStep(dir) {
+  const all = channels(); if (!all.length) { N.toast('No channels yet. Add a YouTube link first.', '', 2200); return; }
+  const cur = current(), i = cur ? all.findIndex(c => c.url === cur.url) : (dir > 0 ? -1 : 0);
+  tune(all[(i + dir + all.length) % all.length]);
 }
 function cmd(func, args = []) { try { frame && frame.contentWindow && frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*'); } catch (e) {} }
 
@@ -154,8 +186,10 @@ function tick() {
     }
   }
   wrap.style.visibility = showing && !N.pcOpen ? 'visible' : 'hidden';
-  // play / pause with the game
-  const play = !N.paused;
+  if (frame.tagName === 'IFRAME' && !yt.got && performance.now() - yt.asked > 1500) listen(); // keep asking until the player answers
+  if (open && performance.now() - stT > 250) status();
+  // play / pause with the game (and the remote's pause button)
+  const play = !N.paused && !userPaused;
   if (play !== lastPlay) { lastPlay = play; cmd(play ? 'playVideo' : 'pauseVideo'); }
   // volume: full next to it, fading across the room, muffled through the bathroom wall
   const now = performance.now();
@@ -173,6 +207,7 @@ requestAnimationFrame(tick);
 // ---------------------------------------------------------------------
 const css = document.createElement('style');
 css.textContent = `
+  #tvRemote .flash.on { opacity:1; }
   #tvRemote { position:fixed; right:24px; top:50%; transform:translateY(-50%); z-index:25; width:min(360px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto;
     background:#15131d; color:#f1eee6; border:1px solid #34304a; border-radius:18px; padding:18px; box-shadow:0 20px 60px #000c; display:none; font:14px system-ui, sans-serif; }
   #tvRemote.show { display:block; }
@@ -198,6 +233,19 @@ css.textContent = `
   #tvRemote .vol { display:flex; align-items:center; gap:10px; } #tvRemote .vol input { flex:1; accent-color:#ffcf5a; } #tvRemote .vol b { width:36px; text-align:right; }
   #tvRemote .foot { display:flex; justify-content:space-between; align-items:center; margin-top:16px; color:#a39db8; font-size:12px; }
   #tvRemote .close { border:0; border-radius:10px; padding:9px 16px; font:800 14px system-ui; background:#2a2638; color:#f1eee6; cursor:pointer; }
+  #tvRemote .now { background:#0d0c14; border:1px solid #34304a; border-radius:12px; padding:10px 12px; }
+  #tvRemote .np { display:flex; justify-content:space-between; gap:10px; font-size:13px; } #tvRemote .np b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #tvRemote .np span { color:#a39db8; font:600 12px ui-monospace, monospace; white-space:nowrap; }
+  #tvRemote .sub { color:#a39db8; font-size:11px; margin-top:2px; min-height:13px; }
+  #tvRemote .bar { height:4px; background:#2a2638; border-radius:2px; margin:8px 0 10px; overflow:hidden; } #tvRemote .bar i { display:block; height:100%; width:0; background:#ff4d4d; }
+  #tvRemote .tp { display:flex; gap:6px; justify-content:center; }
+  #tvRemote .tp button, #tvRemote .chud button { border:0; border-radius:10px; background:#2a2638; color:#f1eee6; font:800 13px system-ui; padding:9px 0; cursor:pointer; flex:1; }
+  #tvRemote .tp button:hover:not(:disabled), #tvRemote .chud button:hover { background:#3a3450; }
+  #tvRemote .tp button:disabled { opacity:.3; cursor:default; }
+  #tvRemote .tp button { display:flex; align-items:center; justify-content:center; gap:2px; } #tvRemote .tp svg { width:17px; height:17px; fill:currentColor; }
+  #tvRemote .tp .pp { flex:1.4; background:#ffcf5a; color:#17130a; font-size:15px; } #tvRemote .tp .pp:hover { background:#ffd97a !important; }
+  #tvRemote .chud { display:flex; align-items:center; gap:8px; margin-top:8px; } #tvRemote .chud b { font:800 13px ui-monospace, monospace; color:#ffcf5a; min-width:64px; text-align:center; }
+  #tvRemote .flash { position:absolute; left:50%; top:12px; transform:translateX(-50%); background:#ffcf5a; color:#17130a; font:800 12px system-ui; padding:4px 10px; border-radius:99px; opacity:0; transition:opacity .3s; pointer-events:none; }
   #tvRemote .warn { background:#3a2020; border:1px solid #ff6b6b55; color:#ffb0b0; border-radius:8px; padding:8px 10px; font-size:12px; line-height:1.4; margin-bottom:10px; }`;
 document.head.appendChild(css);
 const el = document.createElement('div');
@@ -207,6 +255,19 @@ let open = false;
 function render() {
   const f = F(), all = channels(), cur = current();
   el.innerHTML = `<div class="top"><h3>📺 TV remote</h3><button class="pw ${f.tvOn ? 'on' : ''}" data-act="power">${f.tvOn ? '⏻ On' : '⏻ Off'}</button></div>
+    <div class="flash" id="tvFlash"></div>
+    ${f.tvOn && cur ? `<div class="now">
+      <div class="np"><b id="tvNP">${esc(cur.name)}</b><span id="tvTime"></span></div>
+      <div class="sub" id="tvSub"></div>
+      <div class="bar"><i id="tvBar"></i></div>
+      <div class="tp">
+        <button data-act="prevv" title="Previous video (,)">${ICON.prev}</button>
+        <button data-act="back" title="Back 10 seconds (←)">${ICON.back}10</button>
+        <button data-act="pause" class="pp" id="tvPP" title="Pause / play (Space)">${ICON.pause}</button>
+        <button data-act="fwd" title="Forward 10 seconds (→)">10${ICON.fwd}</button>
+        <button data-act="nextv" title="Next video (.)">${ICON.next}</button>
+      </div></div>` : ''}
+    <div class="chud"><button data-act="chdn" title="Channel down (↓)">CH ▼</button><b>${cur ? 'CH ' + String(all.findIndex(c => c.url === cur.url) + 1).padStart(2, '0') : f.tvOn ? 'NO CH' : 'OFF'}</b><button data-act="chup" title="Channel up (↑)">CH ▲</button></div>
     ${location.protocol === 'file:' ? '<div class="warn">YouTube won\'t play when the game is opened as a file (that\'s the "Error 153"). Double-click <b>play-local.bat</b> in the NEETLIFE folder to start the game from a local server, or play on the website.</div>' : ''}
     <div class="lbl">Channels</div>
     ${all.length ? `<div class="chs">${all.map((c, i) => `<div class="ch ${cur && cur.url === c.url ? 'on' : ''}" data-ch="${i}">
@@ -220,9 +281,13 @@ function render() {
     <div class="err" id="tvErr"></div>
     <div class="lbl">Volume</div>
     <div class="vol"><span>🔈</span><input type="range" id="tvVol" min="0" max="100" step="5" value="${f.tvVol ?? 60}"><b id="tvVolV">${f.tvVol ?? 60}</b></div>
-    <div class="foot"><span>Number keys change channel · Esc closes</span><button class="close" data-act="close">Close</button></div>`;
+    <div class="foot"><span>Space pause · ←→ skip · ↑↓ channel · Esc close</span><button class="close" data-act="close">Close</button></div>`;
   el.querySelector('[data-act=power]').onclick = () => { power(!f.tvOn); };
   el.querySelector('[data-act=close]').onclick = close;
+  const on = (a, fn) => { const b = el.querySelector(`[data-act=${a}]`); if (b) b.onclick = () => { fn(); b.blur(); }; };
+  on('pause', togglePause); on('back', () => seek(-10)); on('fwd', () => seek(10)); on('prevv', () => skipVideo(-1)); on('nextv', () => skipVideo(1));
+  on('chup', () => channelStep(1)); on('chdn', () => channelStep(-1));
+  status();
   el.querySelector('[data-act=add]').onclick = add;
   el.querySelectorAll('[data-ch]').forEach(r => r.onclick = e => { if (e.target.closest('[data-del]')) return; tune(all[+r.dataset.ch]); });
   el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
@@ -234,6 +299,36 @@ function render() {
   vol.onchange = () => N.save();
   for (const id of ['tvUrl', 'tvName']) el.querySelector('#' + id).onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') add(); if (e.key === 'Escape') close(); };
 }
+// remote button icons (drawn, so they look the same in every font)
+const ICON = {
+  prev: '<svg viewBox="0 0 24 24"><rect x="5" y="5" width="2.6" height="14" rx="1"/><path d="M19 5.5v13L8.5 12z"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><rect x="16.4" y="5" width="2.6" height="14" rx="1"/><path d="M5 5.5v13L15.5 12z"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M12 6v12L3 12zM21 6v12l-9-6z"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M12 6v12l9-6zM3 6v12l9-6z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></svg>',
+};
+// the live bits of the remote (time, progress, title, pause icon), refreshed a few times a second
+let stT = 0, flashT = 0;
+const clock = t => { t = Math.max(0, Math.floor(t)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); };
+function status() {
+  stT = performance.now();
+  const np = el.querySelector('#tvNP'); if (!np) return;
+  const cur = current(), t = ytNow();
+  if (yt.title) np.textContent = yt.title; else if (cur) np.textContent = cur.name;
+  np.title = np.textContent;
+  el.querySelector('#tvTime').textContent = yt.dur ? `${clock(t)} / ${clock(yt.dur)}` : yt.got ? clock(t) : '';
+  el.querySelector('#tvBar').style.width = yt.dur ? Math.min(100, t / yt.dur * 100) + '%' : '0';
+  const pl = isPlaylist();
+  el.querySelector('#tvSub').textContent = [cur && yt.title && yt.title !== cur.name ? cur.name : '', pl && yt.list && yt.idx >= 0 ? `Video ${yt.idx + 1} of ${yt.list.length}` : pl ? 'Playlist' : ''].filter(Boolean).join(' · ');
+  const pp = el.querySelector('#tvPP'), want = userPaused ? 'play' : 'pause'; if (pp.dataset.icon !== want) { pp.dataset.icon = want; pp.innerHTML = ICON[want]; }
+  for (const a of ['prevv', 'nextv']) el.querySelector(`[data-act=${a}]`).disabled = !pl;
+}
+function flash(msg) {
+  const fl = el.querySelector('#tvFlash'); if (!fl) return;
+  fl.textContent = msg; fl.classList.add('on'); clearTimeout(flashT); flashT = setTimeout(() => fl.classList.remove('on'), 900);
+  status();
+}
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 function power(on) {
   const f = F(); f.tvOn = on; N.furn.thud(on ? 500 : 250);
@@ -241,7 +336,7 @@ function power(on) {
   if (on && !f.pieces.some(q => q.type === 'couch')) N.toast('Get a couch from Nestly to really settle in.', '', 2400);
   N.save(); render();
 }
-function tune(c) { const f = F(); f.tvOn = true; f.tvCh = c.url; N.furn.thud(440); N.save(); render(); }
+function tune(c) { const f = F(); f.tvOn = true; f.tvCh = c.url; userPaused = false; N.furn.thud(440); N.save(); render(); }
 async function add() {
   const url = el.querySelector('#tvUrl').value.trim(), nameIn = el.querySelector('#tvName').value.trim(), err = el.querySelector('#tvErr');
   const v = parseYT(url);
@@ -268,11 +363,16 @@ function close() {
 N.tvRemote = show;
 document.addEventListener('keydown', e => {
   if (!open) return;
-  if (e.code === 'Escape' || (e.code === 'KeyE' && e.target === document.body)) { e.preventDefault(); e.stopPropagation(); close(); return; }
+  const typing = e.target && e.target.tagName === 'INPUT' && e.target.type === 'text';
+  if (e.code === 'Escape' || (e.code === 'KeyE' && !typing)) { e.preventDefault(); e.stopPropagation(); close(); return; }
+  if (typing) return;
+  const keys = { Space: togglePause, ArrowLeft: () => seek(-10), ArrowRight: () => seek(10), ArrowUp: () => channelStep(1), ArrowDown: () => channelStep(-1),
+    PageUp: () => channelStep(1), PageDown: () => channelStep(-1), Comma: () => skipVideo(-1), Period: () => skipVideo(1) };
+  if (keys[e.code]) { e.preventDefault(); e.stopPropagation(); keys[e.code](); return; }
   const n = e.key >= '1' && e.key <= '9' ? +e.key : e.key === '0' ? 10 : 0;
-  if (n && e.target === document.body && channels()[n - 1]) tune(channels()[n - 1]);
+  if (n && channels()[n - 1]) tune(channels()[n - 1]);
 }, true);
 N.hooks.fresh.push(() => { if (open) close(); setSource(''); });
 
-window.__tv = { parseYT, embedSrc, channels, current, get showing() { return showing; }, show, close, TV_CHANNELS };
+window.__tv = { parseYT, embedSrc, channels, current, get showing() { return showing; }, show, close, TV_CHANNELS, get yt() { return yt; }, get userPaused() { return userPaused; }, seek, togglePause, skipVideo, channelStep };
 })();

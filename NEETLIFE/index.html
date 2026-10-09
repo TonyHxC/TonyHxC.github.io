@@ -78,6 +78,26 @@
   .tmenu button.warn { color: var(--red); }
   .tmenu .back { font-size: 16px; color: #ffffff80; margin-top: 10px; }
   .tmenu .ico { width: 22px; height: 22px; flex: none; }
+  .pcode { margin-top: 18px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); text-align: left; }
+  .pcode-lbl, .tcode-lbl { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .pcode-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+  .pcode-row b { font: 800 22px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 2px; color: var(--accent); user-select: all; -webkit-user-select: all; }
+  .pcode-row button { font: 800 13px system-ui; border: 0; border-radius: 8px; padding: 7px 12px; background: var(--line); color: var(--text); cursor: pointer; }
+  .pcode-note { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 4px; }
+  .tcode { width: min(420px, 100%); margin-bottom: 6px; }
+  .tcode-row { display: flex; gap: 8px; margin-top: 8px; }
+  .tcode-row input { flex: 1; min-width: 0; font: 800 22px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 2px; text-transform: uppercase; padding: 10px 12px;
+    background: #0b0a12cc; color: var(--accent); border: 1px solid #ffffff33; border-radius: 10px; user-select: text; -webkit-user-select: text; }
+  .tcode-row input:focus { outline: none; border-color: var(--accent); }
+  .tcode-row button { font: 900 16px system-ui; border: 0; border-radius: 10px; padding: 0 18px; background: var(--accent); color: #17130a; cursor: pointer; }
+  .tcode-row button:disabled { opacity: .5; }
+  .tcode-msg { min-height: 18px; font-size: 13px; font-weight: 600; color: #d9d3ea; margin-top: 8px; } .tcode-msg.bad { color: var(--red); }
+  .tcode-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 32vh; overflow: auto; }
+  .tcode-list button { all: unset; box-sizing: border-box; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px;
+    background: #0b0a1299; border: 1px solid #ffffff1f; }
+  .tcode-list button:hover, .tcode-list button:focus { border-color: var(--accent); }
+  .tcode-list button.cur { border-color: #ffcf5a88; }
+  .tcode-list b { font: 800 15px ui-monospace, Consolas, monospace; letter-spacing: 1px; color: #fff; } .tcode-list span { font-size: 12px; color: var(--muted); white-space: nowrap; }
   #mobileNote { color: var(--red); font-weight: 700; margin-top: 20px; }
   .tkeys { position: absolute; left: max(16px, 7vw); bottom: 22px; font-size: 12px; color: #ffffff80; font-weight: 600; right: 16px; }
   .tkeys b { color: #fff; background: #ffffff1a; border: 1px solid #ffffff26; border-radius: 4px; padding: 1px 6px; margin: 0 4px 0 10px; font-size: 11px; }
@@ -189,6 +209,12 @@
   <p>Time is frozen.</p>
   <button class="btn" id="btnResume">Resume</button>
   <button class="btn ghost" id="btnQuitTitle">Title screen</button>
+  <div class="pcode">
+    <div class="pcode-lbl">Your player code</div>
+    <div class="pcode-row"><b id="pauseCode"></b><button id="btnCopyCode">Copy</button></div>
+    <div class="pcode-note" id="pauseCloud"></div>
+    <div class="pcode-note">Keep it to yourself: anyone with the code can play as you.</div>
+  </div>
 </div></div>
 
 <!-- Evicted -->

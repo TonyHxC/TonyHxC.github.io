@@ -243,6 +243,11 @@ function ensure(S) {
     S.furn = { v: 1, art: 1, pieces: DEFAULT.map(([type, x, z, r, y], i) => ({ uid: i + 1, type, x, z, r, ...(y ? { y } : {}) })), store: [], next: DEFAULT.length + 1,
       tvOn: false, floorOn: true, lavaOn: true, arcadeBest: 0 };
   }
+  // something was mid-move when the game was saved: bought / from storage -> back to storage, moved in the room -> where it was
+  for (const p of [...S.furn.pieces]) {
+    if (p._placing) { S.furn.pieces.splice(S.furn.pieces.indexOf(p), 1); delete p._placing; delete p._orig; p.on = null; p.y = 0; S.furn.store.push(p); }
+    else if (p._orig) { Object.assign(p, p._orig); delete p._orig; }
+  }
   if (!S.furn.art) { S.furn.art = 1; S.furn.pieces.push({ uid: S.furn.next++, type: 'poster', x: 0, z: 0.6, r: 3, y: 1.25 }); } // saves from before art could move
   cancelMove(true); sitting = null;
   rebuild();
@@ -696,6 +701,14 @@ function buy(type) {
 setTimeout(() => N.pcAddApp('furni', '🛋', 'Nestly', 'linear-gradient(135deg,#f6a65a,#e0533d)', render), 0); // after the other apps
 
 N.hooks.fresh.push(ensure);
+// while something is being placed, the save records it as unplaced (see the top of ensure())
+N.hooks.beforeSave.push(S => {
+  if (!S.furn) return;
+  for (const p of S.furn.pieces) { delete p._placing; delete p._orig; }
+  if (!moving) return;
+  if (moving.from !== 'room') moving.p._placing = true;
+  else { moving.p._orig = { ...moving.orig }; for (const k of moving.kids) k.p._orig = { ...k.orig }; }
+});
 if (N.S) ensure(N.S);
 
 N.furn = { DEFS, F, xfPt, xfBox, rect, isMoving, anyTvOn, get sitting() { return sitting; }, get moving() { return moving; }, thud, pass, pick };

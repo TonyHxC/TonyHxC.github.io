@@ -283,7 +283,7 @@ const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {}, selfVisible: fals
 // Glow groups: 1 sky, 2 monitor, 3 ceiling bulb, 4 lamp, 5 burner, 6 sun/moon, 7 stars, 8 city lights, 9 clouds, 10 rain, 11 lightning
 const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12, TV: 13, LAVA: 14, TANK: 15, FLOORLAMP: 16, ARCADE: 17 };
 // module hooks (cooking.js etc. register into these)
-const hooks = { interact: [], update: [], draw: [], drawSelf: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [] };
+const hooks = { interact: [], update: [], draw: [], drawSelf: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [], beforeSave: [] };
 // the active camera: first person by default; modules (character.js) may return {x,y,z,yaw,pitch,reach}
 function getCamera() { let c = null; for (const fn of hooks.camera) c = fn() || c; return c; }
 const VS = `
@@ -596,7 +596,7 @@ function handleEsc() {
   return true;
 }
 function pauseGame() {
-  paused = true; showScreen('scPause');
+  paused = true; showScreen('scPause'); renderPauseCode(); save(); cloud.flush();
   plinkoMsg('pogeyPause');
   if (locked) document.exitPointerLock && document.exitPointerLock();
 }
@@ -676,11 +676,69 @@ function freshState() {
     bills: Object.entries(BILL_DEFS).map(([id, d]) => ({ id, due: d.firstDue, paid: false, late: false })),
     tx: [{ t: 8 * 60, desc: 'Opening balance', amt: START_MONEY }],
     stats: { runs: 0, wins: 0, busts: 0, best: 0, wagered: 0, won: 0 },
-    pos: null, evicted: false, lastDay: 1,
+    pos: null, evicted: false, lastDay: 1, code: newCode(),
   };
 }
-function save() { if (!S || !started) return; try { S.pos = { x: P.x, z: P.z, yaw: P.yaw, pitch: P.pitch }; localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
-function load() { try { const v = localStorage.getItem(SAVE_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+// ---- player codes: every character has one (e.g. K7QM-3XRP-9FHT). Saves are kept per code in this browser and,
+// when online saving is set up, in the Supabase table pogey_saves, so the code loads the character on any computer.
+// Anyone with the code can load (and keep playing) that character: it's the key to the save.
+const SLOT_PREFIX = 'pogeylife_save_v1:';   // one save per code
+const ACTIVE_KEY = 'pogeylife_active_v1';   // the code Continue loads
+const CODE_ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // no 0/O, 1/I/L
+function newCode() { const r = new Uint32Array(12); crypto.getRandomValues(r); let c = ''; for (let i = 0; i < 12; i++) c += (i && i % 4 === 0 ? '-' : '') + CODE_ABC[r[i] % CODE_ABC.length]; return c; }
+function normCode(raw) { const x = String(raw || '').toUpperCase().replace(/[\s-]/g, ''); if (x.length !== 12 || [...x].some(ch => !CODE_ABC.includes(ch))) return null; return x.slice(0, 4) + '-' + x.slice(4, 8) + '-' + x.slice(8); }
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+function migrateLegacy() { // the single save from before player codes becomes a coded one
+  const v = lsGet(SAVE_KEY); if (!v) return;
+  try { const s = JSON.parse(v); if (!s.code) s.code = newCode(); lsSet(SLOT_PREFIX + s.code, JSON.stringify(s)); if (!lsGet(ACTIVE_KEY)) lsSet(ACTIVE_KEY, s.code); localStorage.removeItem(SAVE_KEY); } catch (e) {}
+}
+function save() {
+  if (!S || !started) return;
+  if (!S.code) S.code = newCode();
+  S.pos = { x: P.x, z: P.z, yaw: P.yaw, pitch: P.pitch }; S.savedAt = Date.now();
+  for (const fn of hooks.beforeSave) fn(S);
+  const json = JSON.stringify(S);
+  lsSet(SLOT_PREFIX + S.code, json); lsSet(ACTIVE_KEY, S.code);
+  cloud.queue(S.code, json);
+}
+function load(code) { migrateLegacy(); code = code || lsGet(ACTIVE_KEY); if (!code) return null; try { const v = lsGet(SLOT_PREFIX + code); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function localProfiles() { // characters saved in this browser, most recent first
+  migrateLegacy();
+  const out = [];
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (!k || !k.startsWith(SLOT_PREFIX)) continue;
+    try { const s = JSON.parse(localStorage.getItem(k)); out.push({ code: k.slice(SLOT_PREFIX.length), day: dayOf(s.t), money: s.money, evicted: !!s.evicted, at: s.savedAt || 0 }); } catch (e) {} } } catch (e) {}
+  return out.sort((a, b) => b.at - a.at);
+}
+// ---- online copies (same Supabase project as the Plinko leaderboard). See NEETLIFE/online-saves.sql.
+const CLOUD_URL = 'https://hkfyyhnujjuktqovnsby.supabase.co', CLOUD_KEY = 'sb_publishable_f2J4z9X9m_ex2G_vIuHqQw_rE9MKl3r';
+const cloud = {
+  ready: null,      // null = don't know yet, true = works, false = the online-save table isn't set up
+  state: 'idle',    // 'saved' | 'offline' | 'local' | 'idle'
+  pending: null, lastUp: 0, busy: false,
+  headers() { const h = { apikey: CLOUD_KEY, 'Content-Type': 'application/json' }; if (CLOUD_KEY.startsWith('eyJ')) h.Authorization = 'Bearer ' + CLOUD_KEY; return h; },
+  async rpc(fn, body, keepalive) {
+    const ac = new AbortController(), to = setTimeout(() => ac.abort(), 8000);
+    try {
+      const r = await fetch(`${CLOUD_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: this.headers(), body: JSON.stringify(body), keepalive: !!keepalive, signal: keepalive ? undefined : ac.signal });
+      if (r.status === 404 || r.status === 400 && /function|schema cache/i.test(await r.clone().text())) { this.ready = false; this.state = 'local'; throw new Error('not set up'); }
+      if (!r.ok) throw new Error('http ' + r.status);
+      this.ready = true; const t = await r.text(); return t ? JSON.parse(t) : null;
+    } finally { clearTimeout(to); }
+  },
+  queue(code, json) { if (!CLOUD_URL) return; this.pending = { code, json }; if (performance.now() - this.lastUp > 20000) this.flush(); },
+  flush(keepalive) {
+    if (!this.pending || this.busy || this.ready === false) return;
+    const p = this.pending; this.pending = null; this.busy = true;
+    this.rpc('pogey_save', { p_code: p.code, p_data: JSON.parse(p.json) }, keepalive)
+      .then(() => { this.state = 'saved'; this.lastUp = performance.now(); })
+      .catch(() => { if (!this.pending) this.pending = p; if (this.ready !== false) this.state = 'offline'; })
+      .finally(() => { this.busy = false; if (paused) renderPauseCode(); });
+  },
+  async load(code) { if (!CLOUD_URL || this.ready === false) return undefined; try { return await this.rpc('pogey_load', { p_code: code }); } catch (e) { return undefined; } }, // undefined = couldn't ask
+};
+setInterval(() => cloud.flush(), 20000);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); cloud.flush(true); } });
 
 const dayOf = t => Math.floor(t / 1440) + 1;
 function clockStr(t) {
@@ -1018,19 +1076,51 @@ function renderTitle(view) {
   const mk = (html, fn, cls = '') => { const b = document.createElement('button'); b.className = cls; b.innerHTML = `<span class="ar">▸</span>${html}`; if (fn) b.onclick = fn; else b.disabled = true; box.appendChild(b); return b; };
   if (titleView === 'main') {
     mk('Start game', () => renderTitle('start'));
+    mk('Enter player code', () => renderTitle('code'));
     mk('Settings', () => openSettings('scTitle'));
     mk(`${DISCORD_SVG}Discord`, () => { if (DISCORD_URL) window.open(DISCORD_URL, '_blank', 'noopener'); else toast('The Pogey Life Discord is coming soon.', '', 3000); });
+  } else if (titleView === 'code') {
+    renderCodeScreen(box, mk);
+    return;
   } else {
-    if (has) mk(`Continue <span class="sub">Day ${dayOf(saved.t)} · ${money(saved.money)}</span>`, () => begin(saved));
+    if (has) mk(`Continue <span class="sub">Day ${dayOf(saved.t)} · ${money(saved.money)} · ${saved.code || ''}</span>`, () => continueGame(saved));
     else mk('Continue <span class="sub">no save yet</span>', null);
-    mk(titleConfirm ? `Start over? <span class="sub">erases Day ${dayOf(saved.t)} · click again</span>` : 'New life', () => {
-      if (has && !titleConfirm) { titleConfirm = true; renderTitle(); box.children[1].focus(); return; }
-      try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
-      newLife();
-    }, titleConfirm ? 'warn' : '');
+    mk(has ? 'New life <span class="sub">your current character stays saved</span>' : 'New life', newLife);
+    mk('Enter player code', () => renderTitle('code'));
     mk('← Back', () => renderTitle('main'), 'back');
   }
   const first = box.querySelector('button:not(:disabled)'); if (first && $('scTitle').classList.contains('show')) first.focus({ preventScroll: true });
+}
+// Enter player code: type a code, or pick one of the characters already on this computer
+let codeMsg = '';
+function renderCodeScreen(box, mk) {
+  const act = lsGet(ACTIVE_KEY), list = localProfiles();
+  const form = document.createElement('div'); form.className = 'tcode';
+  form.innerHTML = `<div class="tcode-lbl">Player code</div>
+    <div class="tcode-row"><input id="codeIn" maxlength="16" placeholder="XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off"><button id="codeGo">Load</button></div>
+    <div class="tcode-msg" id="codeMsg">${codeMsg}</div>
+    ${list.length ? `<div class="tcode-lbl" style="margin-top:18px">On this computer</div><div class="tcode-list">${list.map(p => `<button data-code="${p.code}" class="${p.code === act ? 'cur' : ''}">
+      <b>${p.code}</b><span>${p.evicted ? 'Evicted' : 'Day ' + p.day + ' · ' + money(p.money)}${p.at ? ' · ' + new Date(p.at).toLocaleDateString() : ''}${p.code === act ? ' · current' : ''}</span></button>`).join('')}</div>` : ''}`;
+  box.appendChild(form); codeMsg = '';
+  const inp = form.querySelector('#codeIn'), msg = form.querySelector('#codeMsg');
+  inp.oninput = () => { const x = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12); inp.value = x.replace(/(.{4})(?=.)/g, '$1-'); };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') renderTitle('main'); };
+  const pick = (code, note) => { lsSet(ACTIVE_KEY, code); titleScene(); renderTitle('start'); if (note) toast(note, 'good', 3500); };
+  form.querySelectorAll('[data-code]').forEach(b => b.onclick = () => pick(b.dataset.code, `Switched to ${b.dataset.code}.`));
+  async function go() {
+    const code = normCode(inp.value);
+    if (!code) { msg.className = 'tcode-msg bad'; msg.textContent = 'Codes are 12 letters and numbers, like K7QM-3XRP-9FHT.'; return; }
+    if (load(code)) { pick(code, 'Character loaded.'); return; }
+    msg.className = 'tcode-msg'; msg.textContent = 'Looking it up…'; form.querySelector('#codeGo').disabled = true;
+    const online = await cloud.load(code);
+    form.querySelector('#codeGo').disabled = false;
+    if (online && typeof online === 'object') { online.code = code; lsSet(SLOT_PREFIX + code, JSON.stringify(online)); pick(code, 'Character loaded from your online save.'); return; }
+    msg.className = 'tcode-msg bad';
+    msg.textContent = online === null ? 'No character found with that code.' : cloud.ready === false ? "That code isn't on this computer, and online saving isn't switched on yet." : "Couldn't reach the online saves. Check your connection and try again.";
+  }
+  form.querySelector('#codeGo').onclick = go;
+  mk('← Back', () => renderTitle('main'), 'back');
+  setTimeout(() => inp.focus(), 30);
 }
 // arrow keys / Enter / Esc on the title menu
 document.addEventListener('keydown', e => {
@@ -1038,7 +1128,7 @@ document.addEventListener('keydown', e => {
   const bs = [...$('titleBtns').querySelectorAll('button:not(:disabled)')];
   const i = bs.indexOf(document.activeElement);
   if (e.code === 'ArrowDown' || e.code === 'ArrowUp') { e.preventDefault(); const n = bs.length; bs[((i < 0 ? (e.code === 'ArrowDown' ? -1 : 0) : i) + (e.code === 'ArrowDown' ? 1 : -1) + n) % n].focus(); }
-  if (e.code === 'Escape' && titleView !== 'main') renderTitle('main');
+  if (e.code === 'Escape' && titleView !== 'main' && document.activeElement.id !== 'codeIn') renderTitle('main');
 });
 document.addEventListener('focusin', e => { for (const b of $('titleBtns').querySelectorAll('button')) b.classList.toggle('on', b === e.target); });
 // the title background: your own apartment if there's a save (a throwaway copy; nothing here is saved), in the evening
@@ -1073,13 +1163,32 @@ function begin(saved) {
   showScreen(null); updateHUD(); save();
   lockPointer();
   if (!saved) setTimeout(() => toast('Your PC is on the desk. Rent is due Sunday.', '', 6000), 600);
+  if (!saved) setTimeout(() => toast(`Your player code is ${S.code}. It's in the pause menu (Esc) any time: use it to load this character again.`, 'good', 9000), 1400);
+}
+// Continue: if this character was played more recently on another computer, use that copy
+async function continueGame(saved) {
+  const online = await cloud.load(saved.code);
+  if (online && typeof online === 'object' && (online.savedAt || 0) > (saved.savedAt || 0)) { saved = online; lsSet(SLOT_PREFIX + saved.code, JSON.stringify(saved)); toast('Loaded your latest online save.', '', 3000); }
+  begin(saved);
 }
 $('btnResume').onclick = () => resumeGame();
+function renderPauseCode() {
+  const el = $('pauseCode'); if (!el || !S || !S.code) return;
+  el.textContent = S.code;
+  $('pauseCloud').textContent = cloud.state === 'saved' ? '✓ Saved online. Use this code on the title screen (Enter player code) to play this character on any computer.'
+    : cloud.ready === false ? 'Saved on this computer. Online saving isn\'t switched on yet, so the code only works in this browser for now.'
+    : cloud.state === 'offline' ? 'Saved on this computer. Couldn\'t reach the online save right now; it\'ll retry.'
+    : 'Use this code on the title screen (Enter player code) to come back to this character.';
+}
+$('btnCopyCode').onclick = () => {
+  const done = () => { $('btnCopyCode').textContent = 'Copied!'; setTimeout(() => { $('btnCopyCode').textContent = 'Copy'; }, 1500); };
+  try { navigator.clipboard.writeText(S.code).then(done, () => { const r = document.createRange(); r.selectNodeContents($('pauseCode')); getSelection().removeAllRanges(); getSelection().addRange(r); }); } catch (e) {}
+};
 $('btnQuitTitle').onclick = () => {
   if (pcOpen) { if (atTable) forfeitTable(); closePC(true); }
-  save(); started = false; paused = true; showTitle();
+  save(); cloud.flush(); started = false; paused = true; showTitle();
 };
-$('btnNewLife').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} newLife(); };
+$('btnNewLife').onclick = () => newLife(); // the evicted character stays saved under its code
 
 let last = performance.now(), saveTimer = 0;
 function frame(now) {
@@ -1107,7 +1216,7 @@ if (!gl) { document.body.innerHTML = '<p style="padding:30px">Your browser doesn
 initGL(); resize();
 if (matchMedia('(pointer: coarse)').matches) $('mobileNote').style.display = '';
 showTitle();
-window.addEventListener('beforeunload', save);
+window.addEventListener('beforeunload', () => { save(); cloud.flush(true); });
 requestAnimationFrame(frame);
 
 // ---- settings screen ----
@@ -1241,7 +1350,7 @@ window.__pogey = {
   get S() { return S; }, P, things, interact, advance, openPC, closePC, startTable, renderCasino,
   look(x, z, yaw, pitch) { Object.assign(P, { x, z, yaw, pitch }); },
   forceLock(v) { locked = v; paused = !v; showScreen(null); },
-  TITLE_SHOT, titleScene,
+  TITLE_SHOT, titleScene, cloud, newCode, normCode, localProfiles,
   get hovered() { return hovered; },
 };
 })();
