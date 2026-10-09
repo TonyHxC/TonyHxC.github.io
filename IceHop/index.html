@@ -5,56 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ice Hop</title>
 <meta name="description" content="Hop your penguin from floe to floe for bigger multipliers. Cash out before the ice cracks. Play money only.">
-<style>
-  :root { --ink: #1b1a22; --muted: #6a6880; --card: #f4f2ec; --line: #ddd9cf; --navy: #24223a; --gold: #e6b23a; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; min-height: 100%; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink);
-    background: radial-gradient(ellipse at 70% -10%, #bfe6fb 0%, #4a9ad0 35%, #12355e 75%, #0b2240 100%) fixed; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1100px; margin: 0 auto; padding: 16px 16px 12px; color: #fff; }
-  .logo { display: flex; align-items: center; gap: 10px; font-weight: 950; font-size: 26px; letter-spacing: .5px; text-shadow: 0 2px 10px #0004; }
-  .logo span { font-size: 34px; }
-  .wallet { display: flex; align-items: center; gap: 10px; background: #0b2240aa; border: 1px solid #ffffff33; border-radius: 99px; padding: 6px 8px 6px 16px; backdrop-filter: blur(4px); }
-  .wallet small { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #bfe3f7; }
-  .wallet b { font-size: 18px; color: #6fe39a; font-variant-numeric: tabular-nums; }
-  .wallet a { font-size: 12px; font-weight: 800; color: #0b2240; background: #ffcf3a; border-radius: 99px; padding: 6px 12px; text-decoration: none; }
-  main { max-width: 1100px; margin: 0 auto; padding: 0 16px 16px; }
-  .card { background: var(--card); border-radius: 18px; box-shadow: 0 24px 60px #0007; padding: 18px; }
-  #iceHopApp { height: calc(100vh - 150px); min-height: 520px; overflow: auto; }
-  footer { max-width: 1100px; margin: 0 auto; padding: 0 16px 24px; color: #cfe6f5; font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  footer a { color: #fff; font-weight: 700; }
-  /* the PogeyCasino look the game expects */
-  .casino { max-width: 680px; margin: 0 auto; }
-  .casino h3 { font-size: 22px; margin: 4px 0 6px; }
-  .casino p { line-height: 1.5; font-size: 14px; color: #3b3a44; }
-  .wbtn { font: inherit; font-weight: 800; font-size: 13px; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; background: var(--navy); color: #fff; }
-  .wbtn:disabled { opacity: .35; cursor: not-allowed; }
-  .wbtn.gold { background: var(--gold); color: #1b1405; }
-  .bets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-  .bets button { font: inherit; font-size: 18px; font-weight: 900; padding: 14px 18px; border-radius: 10px; border: 2px solid var(--navy); background: #fff; color: var(--navy); cursor: pointer; min-width: 84px; }
-  .bets button.on { background: var(--navy); color: #ffcf5a; }
-  .bets button:disabled { opacity: .3; cursor: not-allowed; }
-  .bets .cbet { display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--navy); background: #fff; color: var(--navy); font-weight: 900; font-size: 15px; cursor: text; }
-  .bets .cbet.on { background: var(--navy); color: #ffcf5a; }
-  .bets .cbet input { width: 78px; font: inherit; font-size: 18px; font-weight: 900; border: 0; border-bottom: 2px solid currentColor; background: transparent; color: inherit; padding: 9px 2px 5px; outline: none; -moz-appearance: textfield; }
-  .bets .cbet input::-webkit-outer-spin-button, .bets .cbet input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .bets .cbet input::placeholder { color: inherit; opacity: .4; }
-  .bets .cbet-msg { flex-basis: 100%; font-size: 12px; font-weight: 700; color: #c43a3a; }
-  .bets .cbet-msg:empty { display: none; }
-  .back { font: inherit; font-size: 13px; font-weight: 800; background: none; border: 0; color: #55536a; cursor: pointer; padding: 0; margin-bottom: 8px; }
-  .ladder { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 10px 0; }
-  .rung { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px; text-align: center; font-size: 12px; color: #7a7790; }
-  .rung b { display: block; color: var(--ink); font-size: 15px; }
-  .neg { color: #c43a3a; font-weight: 700; }
-  .ih-toast { position: fixed; right: 16px; top: 16px; z-index: 50; background: #0d0c14ee; color: #fff; border-left: 4px solid #ffcf5a; padding: 10px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; max-width: min(360px, 80vw); box-shadow: 0 10px 30px #0006; }
-  .ih-toast.good { border-left-color: #6fe39a; } .ih-toast.bad { border-left-color: #ff6b6b; }
-  @media (max-width: 600px) { .logo { font-size: 20px; } .logo span { font-size: 26px; } .wallet small { display: none; } #iceHopApp { height: auto; } }
-</style>
+<style>:root{--ink: #1b1a22;--muted: #6a6880;--card: #f4f2ec;--line: #ddd9cf;--navy: #24223a;--gold: #e6b23a}*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:radial-gradient(ellipse at 70% -10%,#bfe6fb,#4a9ad0 35%,#12355e 75%,#0b2240) fixed}header{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1100px;margin:0 auto;padding:16px 16px 12px;color:#fff}.logo{display:flex;align-items:center;gap:10px;font-weight:950;font-size:26px;letter-spacing:.5px;text-shadow:0 2px 10px #0004}.logo span{font-size:34px}.wallet{display:flex;align-items:center;gap:10px;background:#0b2240aa;border:1px solid #ffffff33;border-radius:99px;padding:6px 8px 6px 16px;backdrop-filter:blur(4px)}.wallet small{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#bfe3f7}.wallet b{font-size:18px;color:#6fe39a;font-variant-numeric:tabular-nums}.wallet a{font-size:12px;font-weight:800;color:#0b2240;background:#ffcf3a;border-radius:99px;padding:6px 12px;text-decoration:none}main{max-width:1100px;margin:0 auto;padding:0 16px 16px}.card{background:var(--card);border-radius:18px;box-shadow:0 24px 60px #0007;padding:18px}#iceHopApp{height:calc(100vh - 150px);min-height:520px;overflow:auto}footer{max-width:1100px;margin:0 auto;padding:0 16px 24px;color:#cfe6f5;font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}footer a{color:#fff;font-weight:700}.casino{max-width:680px;margin:0 auto}.casino h3{font-size:22px;margin:4px 0 6px}.casino p{line-height:1.5;font-size:14px;color:#3b3a44}.wbtn{font:inherit;font-weight:800;font-size:13px;border:0;border-radius:8px;padding:7px 12px;cursor:pointer;background:var(--navy);color:#fff}.wbtn:disabled{opacity:.35;cursor:not-allowed}.wbtn.gold{background:var(--gold);color:#1b1405}.bets{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.bets button{font:inherit;font-size:18px;font-weight:900;padding:14px 18px;border-radius:10px;border:2px solid var(--navy);background:#fff;color:var(--navy);cursor:pointer;min-width:84px}.bets button.on{background:var(--navy);color:#ffcf5a}.bets button:disabled{opacity:.3;cursor:not-allowed}.bets .cbet{display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:10px;border:2px solid var(--navy);background:#fff;color:var(--navy);font-weight:900;font-size:15px;cursor:text}.bets .cbet.on{background:var(--navy);color:#ffcf5a}.bets .cbet input{width:78px;font:inherit;font-size:18px;font-weight:900;border:0;border-bottom:2px solid currentColor;background:transparent;color:inherit;padding:9px 2px 5px;outline:none;-moz-appearance:textfield}.bets .cbet input::-webkit-outer-spin-button,.bets .cbet input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}.bets .cbet input::placeholder{color:inherit;opacity:.4}.bets .cbet-msg{flex-basis:100%;font-size:12px;font-weight:700;color:#c43a3a}.bets .cbet-msg:empty{display:none}.back{font:inherit;font-size:13px;font-weight:800;background:none;border:0;color:#55536a;cursor:pointer;padding:0;margin-bottom:8px}.ladder{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;margin:10px 0}.rung{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;text-align:center;font-size:12px;color:#7a7790}.rung b{display:block;color:var(--ink);font-size:15px}.neg{color:#c43a3a;font-weight:700}.ih-toast{position:fixed;right:16px;top:16px;z-index:50;background:#0d0c14ee;color:#fff;border-left:4px solid #ffcf5a;padding:10px 14px;border-radius:8px;font-size:14px;font-weight:600;max-width:min(360px,80vw);box-shadow:0 10px 30px #0006}.ih-toast.good{border-left-color:#6fe39a}.ih-toast.bad{border-left-color:#ff6b6b}@media(max-width:600px){.logo{font-size:20px}.logo span{font-size:26px}.wallet small{display:none}#iceHopApp{height:auto}}</style>
 </head>
 <body>
 <header>
-  <div class="logo"><span>🐧</span>ICE HOP</div>
-  <div class="wallet"><small>Play chips</small><b id="ihBalance">$1,000</b><a href="../NEETLIFE/index.html" title="Ice Hop is also in the casino in Pogey Life">Play Pogey Life</a></div>
+<div class="logo"><span>🐧</span>ICE HOP</div>
+<div class="wallet"><small>Play chips</small><b id="ihBalance">$1,000</b><a href="../NEETLIFE/index.html" title="Ice Hop is also in the casino in Pogey Life">Play Pogey Life</a></div>
 </header>
 <main><div class="card"><div id="iceHopApp"></div></div></main>
 <footer><span>Play money only: chips have no value and are saved in this browser. Lose them all and it's game over: you start again with $1,000.</span><span>Also in the PogeyCasino in <a href="../NEETLIFE/index.html">Pogey Life</a>.</span></footer>
