@@ -99,11 +99,11 @@ const hex = h => { let x = h.slice(1); if (x.length === 3) x = x.replace(/./g, c
 const mixC = (a, b, t) => { const A = hex(a), B = hex(b); return A.map((v, i) => v + (B[i] - v) * t); };
 const shade = (c, k) => (typeof c === 'string' ? hex(c) : c).map(v => Math.min(1, v * k));
 // pose context: origin (x,z), yaw, uniform scale; parts may rotate about a pivot around local X (limb swing)
-let X0 = 0, Z0 = 0, YAW = 0, SC = 1, LIMB = null, BONE = 'body', RECORD = null, NOPIN = false;
+let X0 = 0, Y0 = 0, Z0 = 0, YAW = 0, SC = 1, LIMB = null, BONE = 'body', RECORD = null, NOPIN = false;
 const POSE = {}; // bone -> current limb rotation, so pins follow arms/legs
 function toWorld(lx, ly, lz) {
-  if (LIMB) { const [px, py, pz, a] = LIMB, dy = ly - py, dz = lz - pz, c = Math.cos(a), s = Math.sin(a); ly = py + dy * c - dz * s; lz = pz + dy * s + dz * c; }
-  lx *= SC; ly *= SC; lz *= SC;
+  if (LIMB) { const [px, py, pz, a, oy = 0, oz = 0] = LIMB, dy = ly - py, dz = lz - pz, c = Math.cos(a), s = Math.sin(a); ly = py + dy * c - dz * s + oy; lz = pz + dy * s + dz * c + oz; }
+  lx *= SC; ly *= SC; lz *= SC; ly += Y0;
   // local x = right, local z = forward (where the face points)
   const cy = Math.cos(YAW), sy = Math.sin(YAW);
   return [X0 + lx * cy - lz * sy, ly, Z0 - lx * sy - lz * cy];
@@ -137,23 +137,30 @@ const HEIGHT = { short: 0.92, average: 1, tall: 1.08 };
 const BUILD = { slim: 0.86, average: 1, broad: 1.16 };
 function drawCharacter(ch, x, z, yaw, walk, opts = {}) {
   X0 = x; Z0 = z; YAW = yaw; SC = HEIGHT[ch.height] || 1; LIMB = null; BONE = 'body';
+  const sit = opts.sit; // { y: seat height, legs: 'bent' | 'out' } — lowers the body so the hips rest on the seat
+  Y0 = sit ? sit.y - 0.8 * SC : 0;
   const b = BUILD[ch.build] || 1, skin = ch.skin, hc = ch.hairColor, top = ch.topColor, bot = ch.bottomColor;
   const swing = Math.sin(walk) * 0.55 * (opts.moving ? 1 : 0), hold = !!opts.holding;
   const B = ch.bottom, T = ch.top;
   const fullLeg = ['jeans', 'sweats', 'cargo'].includes(B), shorts = B === 'shorts', undies = B === 'underwear', skirt = B === 'skirt';
 
-  // legs (swing about the hip)
+  // legs (swing about the hip). Sitting: 'out' = straight legs forward (beanbag); 'bent' = thighs forward, shins down (chair)
   for (const side of [-1, 1]) {
     const lx = side * 0.085, a = side * swing;
-    BONE = side < 0 ? 'legL' : 'legR'; LIMB = POSE[BONE] = [lx, 0.82, 0, a];
+    BONE = side < 0 ? 'legL' : 'legR';
+    const upper = sit ? [lx, 0.82, 0, sit.legs === 'out' ? -1.42 : -Math.PI / 2] : [lx, 0.82, 0, a];
+    const lower = sit && sit.legs !== 'out' ? [lx, 0, 0, 0, 0.37, 0.32] : upper;
+    LIMB = POSE[BONE] = lower;
     cb(lx, 0.0, 0.035, 0.14, 0.075, 0.25, ch.shoes);                         // shoe
     cb(lx, 0.07, 0, 0.125, 0.38, 0.14, fullLeg ? bot : skin);                 // shin
+    if (B === 'jeans') cb(lx, 0.07, 0, 0.13, 0.02, 0.145, shade(bot, 0.8));   // cuff
+    if (B === 'sweats') cb(lx, 0.07, 0, 0.12, 0.04, 0.135, shade(bot, 0.8));  // elastic cuff
+    LIMB = POSE[BONE] = upper;
     cb(lx, 0.45, 0, 0.13, 0.13, 0.145, fullLeg ? bot : skin);                 // knee
     cb(lx, 0.58, 0, 0.135, 0.18, 0.15, fullLeg || shorts ? bot : skin);       // thigh
     cb(lx, 0.76, 0, 0.14, 0.07, 0.155, skirt ? skin : bot);                   // top of leg
     if (shorts) cb(lx, 0.57, 0, 0.145, 0.025, 0.16, shade(bot, 0.85));        // hem
-    if (B === 'jeans') cb(lx, 0.07, 0, 0.13, 0.02, 0.145, shade(bot, 0.8));   // cuff
-    if (B === 'sweats') { cb(lx, 0.07, 0, 0.12, 0.04, 0.135, shade(bot, 0.8)); cb(lx + side * 0.064, 0.12, 0, 0.006, 0.7, 0.03, '#efefef'); } // elastic cuff + side stripe
+    if (B === 'sweats') cb(lx + side * 0.064, sit ? 0.47 : 0.12, 0, 0.006, sit ? 0.35 : 0.7, 0.03, '#efefef'); // side stripe
     if (B === 'cargo') cb(lx + side * 0.07, 0.5, 0, 0.02, 0.13, 0.1, shade(bot, 0.85));   // side pocket
   }
   LIMB = null; BONE = 'body';
@@ -202,7 +209,7 @@ function drawCharacter(ch, x, z, yaw, walk, opts = {}) {
   }
   // arms (swing opposite to legs; forward when holding something)
   for (const side of [-1, 1]) {
-    const ax = side * (tw / 2 + 0.055), a = hold ? -1.15 : -side * swing * 0.9;
+    const ax = side * (tw / 2 + 0.055), a = hold ? -1.15 : sit ? -0.55 : -side * swing * 0.9;
     BONE = side < 0 ? 'armL' : 'armR'; LIMB = POSE[BONE] = [ax, 1.4, 0, a];
     cb(ax, 1.2, 0, 0.1, 0.22, 0.11, sleeveFull || sleeveShort ? top : skin);  // upper arm
     if (sleeveShort) cb(ax, 1.2, 0, 0.108, 0.03, 0.118, T === 'jersey' ? '#f4f4f0' : shade(top, 0.88)); // sleeve hem / jersey stripe
@@ -432,7 +439,8 @@ N.hooks.drawSelf.push(() => {
   N.env.selfVisible = mode === 'creator' || third() || (mode === 'mirror' && N.settings.mirror === 'simple');
   if (mode === 'creator') return recordDraw(draft, STAGE.x, STAGE.z, stageYaw);
   if (mode === 'mirror') return recordDraw(draft, N.MIRROR.stand.x, N.MIRROR.stand.z, stageYaw);
-  if (N.started) drawCharacter(S.char, N.P.x, N.P.z, N.P.yaw, walkPhase, { moving, holding: !!(S.kitchen && S.kitchen.held) });
+  const sit = N.sitPose && N.sitPose(); // sitting on a chair / beanbag / couch (furniture.js)
+  if (N.started) drawCharacter(S.char, sit ? sit.x : N.P.x, sit ? sit.z : N.P.z, sit ? sit.yaw : N.P.yaw, walkPhase, { moving: moving && !sit, holding: !!(S.kitchen && S.kitchen.held), sit });
 });
 N.hooks.key.push(code => {
   if (code === 'KeyV') { N.S.view = third() ? 'first' : 'third'; N.toast(N.S.view === 'third' ? 'Third person (press V to switch back).' : 'First person.', '', 2000); N.save(); }

@@ -19,11 +19,11 @@ const BOOK_COLS = ['#c0392b', '#2e86c1', '#27ae60', '#f1c40f', '#8e44ad', '#e67e
 
 const DEFS = {
   // ---- what came with the apartment ----
-  bed: { name: 'Bed', icon: '🛏', w: 1.05, d: 2.2, h: 1.0, essential: true, resale: 0,
+  bed: { name: 'Bed', icon: '🛏', w: 1.05, d: 2.2, h: 1.0, essential: true, resale: 0, surface: { y: 0.54, r: [0.04, 0.2, 1.0, 2.15] },
     build() {
       box(0.02, 0, 0.15, 1.0, 0.3, 2.05, '#5b4636'); box(0.05, 0.3, 0.2, 0.94, 0.18, 1.98, '#ece8e0');
-      box(0.04, 0.46, 0.75, 0.96, 0.08, 1.45, '#3d5a8a'); box(0.04, 0.42, 0.7, 0.96, 0.06, 0.1, '#344d78');
-      box(0.18, 0.48, 0.25, 0.66, 0.12, 0.38, '#f6f3ec'); box(0.02, 0, 0.0, 1.0, 1.0, 0.15, '#4a382b');
+      box(0.03, 0.4, 0.75, 0.99, 0.14, 1.46, '#3d5a8a'); box(0.025, 0.41, 0.69, 1.0, 0.11, 0.1, '#344d78'); // blanket drapes over the mattress edges (nothing coplanar)
+      box(0.18, 0.47, 0.25, 0.66, 0.135, 0.38, '#f6f3ec'); box(0.02, 0, 0.0, 1.0, 1.0, 0.15, '#4a382b');
     },
     things: () => [['bed', 'Sleep', [0, 0, 0.15, 1.05, 0.7, 2.2]]] },
   nightstand: { name: 'Nightstand + lamp', icon: '💡', w: 0.47, d: 0.47, h: 1.0, resale: 30,
@@ -34,7 +34,7 @@ const DEFS = {
     },
     things: () => [['lamp', () => N.S.lampOn === false ? 'Turn the lamp on' : 'Turn the lamp off', [0.1, 0.5, 0.1, 0.38, 0.98, 0.4]]],
     lamp: [0.24, 0.95, 0.25] },
-  desk: { name: 'Desk + PC', icon: '🖥', w: 1.5, d: 0.72, h: 1.45, essential: true, resale: 0,
+  desk: { name: 'Desk + PC', icon: '🖥', w: 1.5, d: 0.72, h: 1.45, essential: true, resale: 0, surface: { y: 0.76, r: [0, 0.02, 1.5, 0.72] },
     build() {
       box(0, 0.72, 0.02, 1.5, 0.04, 0.7, '#3b3a44');
       for (const [x, z] of [[0.03, 0.06], [1.42, 0.06], [0.03, 0.62], [1.42, 0.62]]) box(x, 0, z, 0.05, 0.72, 0.05, '#222');
@@ -48,6 +48,8 @@ const DEFS = {
     things: () => [['pc', 'Use computer', [0.3, 0.72, 0, 1.2, 1.45, 0.72]]],
     mon: [0.75, 1.15, 0.45] },
   chair: { name: 'Desk chair', icon: '🪑', w: 0.56, d: 0.58, h: 1.2, resale: 40,
+    seat: { at: [[0.28, 0.24]], y: 0.52, face: -1, legs: 'bent', eye: 1.15 },
+    things: p => [[tid(p, 'sit'), () => seatPrompt(p, 'Sit in the chair'), [0, 0.3, 0, 0.56, 1.2, 0.58]]],
     build() {
       const cx = 0.28, cz = 0.28;
       prism(cx, 0, cz, 0.28, 0.04, '#222', 5); prism(cx, 0.04, cz, 0.03, 0.4, '#333', 6);
@@ -56,19 +58,20 @@ const DEFS = {
   rug: { name: 'Purple rug', icon: '🟪', w: 1.9, d: 1.4, h: 0.02, flat: true, resale: 20,
     build() { box(0, 0.0, 0, 1.9, 0.01, 1.4, '#5a3a5e'); box(0.08, 0.01, 0.08, 1.74, 0.005, 1.24, '#6b4870'); } },
   beanbag: { name: 'Green beanbag', icon: '🫘', w: 0.7, d: 0.7, h: 0.65, resale: 30,
+    seat: { at: [[0.35, 0.3]], y: 0.42, face: -1, legs: 'out', eye: 0.98 },
     build() { box(0, 0, 0, 0.7, 0.3, 0.7, '#2f6b5a'); box(0.08, 0.3, 0.07, 0.54, 0.16, 0.55, '#327562'); box(0.04, 0.3, 0.5, 0.62, 0.35, 0.2, '#2f6b5a'); },
-    things: p => [[tid(p, 'flop'), 'Flop onto the beanbag', [0, 0, 0, 0.7, 0.65, 0.7]]] },
-  pizza: { name: 'Pizza box stack', icon: '🍕', w: 0.45, d: 0.46, h: 0.16, solid: false, resale: 0,
+    things: p => [[tid(p, 'sit'), () => seatPrompt(p, 'Sit in the beanbag'), [0, 0, 0, 0.7, 0.65, 0.7]]] },
+  pizza: { name: 'Pizza box stack', icon: '🍕', w: 0.45, d: 0.46, h: 0.16, solid: false, resale: 0, stack: true,
     build() { box(0.01, 0, 0.02, 0.42, 0.05, 0.42, '#c9a36b'); box(0.03, 0.05, 0.04, 0.42, 0.05, 0.42, '#bf9860'); box(0, 0.1, 0, 0.42, 0.05, 0.42, '#c9a36b'); } },
-  laundry: { name: 'Laundry pile', icon: '🧺', w: 0.5, d: 0.4, h: 0.3, solid: false, resale: 0,
+  laundry: { name: 'Laundry pile', icon: '🧺', w: 0.5, d: 0.4, h: 0.3, solid: false, resale: 0, stack: true,
     build() { box(0, 0, 0, 0.5, 0.18, 0.4, '#6d7a8c'); box(0.1, 0.18, 0.06, 0.32, 0.12, 0.28, '#8c5a5a'); } },
   trash: { name: 'Trash bin', icon: '🗑', w: 0.34, d: 0.38, h: 0.5, essential: true, resale: 0,
     build() { prism(0.17, 0, 0.19, 0.16, 0.45, '#3a3a40', 8); prism(0.17, 0.45, 0.19, 0.17, 0.03, '#2c2c32', 8); },
     things: () => [['trash', 'Trash', [-0.02, 0, 0, 0.36, 0.6, 0.38]]] },
 
   // ---- the Nestly catalogue ----
-  couch: { name: 'Couch', icon: '🛋', price: 450, w: 2.0, d: 0.85, h: 0.9, shop: true,
-    desc: 'Seats three, or one NEET lying down. Sit and watch TV if you have one.',
+  couch: { name: 'Couch', icon: '🛋', price: 450, w: 2.0, d: 0.85, h: 0.9, shop: true, surface: { y: 0.5, r: [0.18, 0.22, 1.82, 0.85] },
+    desc: 'Seats three, or one NEET lying down. Sit on it and watch TV if you have one.',
     build() {
       const c = '#4a6fa5';
       box(0.05, 0, 0.05, 1.9, 0.1, 0.75, '#2b2b30'); box(0, 0.1, 0, 2.0, 0.3, 0.85, '#3f5f8f');
@@ -76,8 +79,9 @@ const DEFS = {
       for (let i = 0; i < 3; i++) box(0.2 + i * 0.54, 0.4, 0.22, 0.52, 0.1, 0.6, '#5b80b8');
       box(0.26, 0.5, 0.24, 0.32, 0.26, 0.1, '#e0b04a');
     },
-    things: p => [[tid(p, 'couch'), () => anyTvOn() ? 'Sit and watch TV (1 h)' : 'Sit and zone out (30 min)', [0, 0, 0, 2.0, 0.9, 0.85]]] },
-  coffee: { name: 'Coffee table', icon: '☕', price: 120, w: 1.0, d: 0.55, h: 0.48, shop: true,
+    seat: { at: [[0.48, 0.52], [1.0, 0.52], [1.52, 0.52]], y: 0.5, face: 1, legs: 'bent', eye: 1.12 },
+    things: p => [[tid(p, 'sit'), () => seatPrompt(p, 'Sit on the couch'), [0, 0, 0, 2.0, 0.9, 0.85]]] },
+  coffee: { name: 'Coffee table', icon: '☕', price: 120, w: 1.0, d: 0.55, h: 0.48, shop: true, surface: { y: 0.43, r: [0, 0, 1.0, 0.55] },
     desc: 'Somewhere to put your feet and your drinks.',
     build() {
       box(0, 0.38, 0, 1.0, 0.05, 0.55, '#7a5236');
@@ -92,7 +96,7 @@ const DEFS = {
       box(0.15, 0.53, 0.18, 1.1, 0.62, 0.005, '#ffffff', GLOW.TV);
     },
     things: p => [[tid(p, 'tv'), () => N.S.furn.tvOn ? 'Turn the TV off' : 'Turn the TV on', [0.1, 0.45, 0.05, 1.3, 1.2, 0.3]]] },
-  bookshelf: { name: 'Bookshelf', icon: '📚', price: 180, w: 0.9, d: 0.35, h: 1.8, shop: true,
+  bookshelf: { name: 'Bookshelf', icon: '📚', price: 180, w: 0.9, d: 0.35, h: 1.8, shop: true, surface: { y: 1.8, r: [0, 0, 0.9, 0.35] },
     desc: 'Full of books. You might even read one.',
     build() {
       const wood = '#6e4b32';
@@ -106,12 +110,14 @@ const DEFS = {
       }
     },
     things: p => [[tid(p, 'read'), 'Read a book (30 min)', [0, 0, 0, 0.9, 1.8, 0.4]]] },
-  plant: { name: 'Houseplant', icon: '🪴', price: 35, w: 0.4, d: 0.4, h: 1.0, shop: true,
+  plant: { name: 'Houseplant', icon: '🪴', price: 35, w: 0.4, d: 0.4, h: 1.0, shop: true, stack: true,
     desc: 'Water it every couple of days or it gets sad.',
     build(p) {
       prism(0.2, 0, 0.2, 0.14, 0.27, '#b5651d', 8); prism(0.2, 0.26, 0.2, 0.155, 0.04, '#a0561a', 8);
-      prism(0.2, 0.29, 0.2, 0.13, 0.01, '#4a3020', 8); prism(0.2, 0.29, 0.2, 0.02, 0.35, '#3a6b2a', 6);
-      const dry = thirsty(p), col = dry ? '#9a8a40' : '#3f9a3a', col2 = dry ? '#857634' : '#57b84e', dy = dry ? -0.13 : 0;
+      prism(0.2, 0.3, 0.2, 0.128, 0.008, '#4a3020', 8);
+      const dry = thirsty(p);
+      prism(0.2, 0.3, 0.2, 0.02, dry ? 0.45 : 0.6, '#3a6b2a', 6);
+      const col = dry ? '#9a8a40' : '#3f9a3a', col2 = dry ? '#857634' : '#57b84e', dy = dry ? -0.13 : 0;
       const L = [[0.04, 0.55, 0.12, 0.16, 0.04, 0.12], [0.2, 0.62, 0.04, 0.12, 0.04, 0.16], [0.2, 0.72, 0.22, 0.15, 0.04, 0.12], [0.05, 0.8, 0.2, 0.13, 0.04, 0.14], [0.14, 0.88, 0.12, 0.12, 0.05, 0.12]];
       L.forEach((l, i) => box(l[0], l[1] + dy * (0.5 + i * 0.15), l[2], l[3], l[4], l[5], i % 2 ? col : col2));
     },
@@ -133,7 +139,7 @@ const DEFS = {
       box(0.08, 1.08, 0.6, 0.54, 0.42, 0.005, '#ffffff', GLOW.ARCADE); box(0.04, 1.6, 0.6, 0.62, 0.18, 0.005, '#ffffff', GLOW.ARCADE);
     },
     things: p => [[tid(p, 'arcade'), 'Play the arcade (20 min)', [0, 0, 0, 0.7, 1.85, 0.75]]] },
-  fishtank: { name: 'Fish tank', icon: '🐠', price: 250, w: 0.9, d: 0.45, h: 1.2, shop: true,
+  fishtank: { name: 'Fish tank', icon: '🐠', price: 250, w: 0.9, d: 0.45, h: 1.2, shop: true, surface: { y: 1.18, r: [0, 0.01, 0.9, 0.44] },
     desc: 'Three fish with no names yet. Feed them once a day.',
     build() {
       box(0, 0, 0, 0.9, 0.7, 0.45, '#3a2a20'); box(0.02, 0.7, 0.03, 0.86, 0.45, 0.39, '#ffffff', GLOW.TANK);
@@ -151,8 +157,9 @@ const DEFS = {
     things: p => [[tid(p, 'lava'), () => N.S.furn.lavaOn ? 'Turn the lava lamp off' : 'Turn the lava lamp on', [0, 0, 0, 0.45, 0.95, 0.45]]] },
   beanbag2: { name: 'Purple beanbag', icon: '🟣', price: 80, w: 0.7, d: 0.7, h: 0.65, shop: true,
     desc: 'A second beanbag, for the friend you will definitely have over.',
+    seat: { at: [[0.35, 0.3]], y: 0.42, face: -1, legs: 'out', eye: 0.98 },
     build() { box(0, 0, 0, 0.7, 0.3, 0.7, '#6a3f8f'); box(0.08, 0.3, 0.07, 0.54, 0.16, 0.55, '#7a4aa3'); box(0.04, 0.3, 0.5, 0.62, 0.35, 0.2, '#6a3f8f'); },
-    things: p => [[tid(p, 'flop'), 'Flop onto the beanbag', [0, 0, 0, 0.7, 0.65, 0.7]]] },
+    things: p => [[tid(p, 'sit'), () => seatPrompt(p, 'Sit in the beanbag'), [0, 0, 0, 0.7, 0.65, 0.7]]] },
   rug2: { name: 'Blue rug', icon: '🟦', price: 60, w: 1.6, d: 1.2, h: 0.02, flat: true, shop: true,
     desc: 'Ties the room together.',
     build() { box(0, 0, 0, 1.6, 0.012, 1.2, '#2f5d8a'); box(0.1, 0.012, 0.1, 1.4, 0.004, 1.0, '#3f77a8'); box(0.35, 0.016, 0.35, 0.9, 0.003, 0.5, '#e8d27a'); } },
@@ -171,7 +178,7 @@ function ensure(S) {
     S.furn = { v: 1, pieces: DEFAULT.map(([type, x, z, r], i) => ({ uid: i + 1, type, x, z, r })), store: [], next: DEFAULT.length + 1,
       tvOn: false, floorOn: true, lavaOn: true, arcadeBest: 0 };
   }
-  cancelMove(true);
+  cancelMove(true); sitting = null;
   rebuild();
 }
 const F = () => N.S.furn;
@@ -180,21 +187,29 @@ const anyTvOn = () => F().tvOn && F().pieces.some(p => p.type === 'tv' && !isMov
 // footprint + transform
 const dims = p => { const d = DEFS[p.type]; return p.r % 2 ? [d.d, d.w] : [d.w, d.d]; };
 const rect = (p, x = p.x, z = p.z, r = p.r) => { const d = DEFS[p.type], [w, dd] = r % 2 ? [d.d, d.w] : [d.w, d.d]; return [x, z, x + w, z + dd]; };
-const xfOf = (p, tint) => ({ ox: p.x, oz: p.z, w: DEFS[p.type].w, d: DEFS[p.type].d, r: p.r, tint });
+const xfOf = (p, tint) => ({ ox: p.x, oz: p.z, oy: p.y || 0, w: DEFS[p.type].w, d: DEFS[p.type].d, r: p.r, tint });
 function xfPt(p, lx, lz) {
   const { w, d } = DEFS[p.type], r = p.r;
   const q = r === 1 ? [d - lz, lx] : r === 2 ? [w - lx, d - lz] : r === 3 ? [lz, w - lx] : [lx, lz];
   return [p.x + q[0], p.z + q[1]];
 }
-function xfBox(p, b) { const [ax, az] = xfPt(p, b[0], b[2]), [bx, bz] = xfPt(p, b[3], b[5]); return [Math.min(ax, bx), b[1], Math.min(az, bz), Math.max(ax, bx), b[4], Math.max(az, bz)]; }
+function xfBox(p, b) { const [ax, az] = xfPt(p, b[0], b[2]), [bx, bz] = xfPt(p, b[3], b[5]), y = p.y || 0; return [Math.min(ax, bx), b[1] + y, Math.min(az, bz), Math.max(ax, bx), b[4] + y, Math.max(az, bz)]; }
+// world point → piece-local (inverse of xfPt)
+function toLocal(p, wx, wz) {
+  const { w, d } = DEFS[p.type], qx = wx - p.x, qz = wz - p.z;
+  return p.r === 1 ? [qz, d - qx] : p.r === 2 ? [w - qx, d - qz] : p.r === 3 ? [w - qz, qx] : [qx, qz];
+}
+// the world rectangle + height of a piece's top surface (things like pizza boxes, laundry and plants can sit there)
+function surfaceOf(p) { const s = DEFS[p.type].surface; if (!s) return null; const b = xfBox(p, [s.r[0], 0, s.r[1], s.r[2], 0, s.r[3]]); return { y: (p.y || 0) + s.y, r: [b[0], b[2], b[3], b[5]] }; }
+const onTop = p => F().pieces.filter(q => q.on === p.uid);
 
 // ---------------------------------------------------------------------
 // Bake the layout: mesh, collision, interactables, lights
 // ---------------------------------------------------------------------
-let mySolids = [], myThings = [];
+let mySolids = [], myThings = [], sitting = null;
 const thingCache = {}; // keep the same thing objects across rebuilds (cooking.js customises the trash bin's prompt)
-let moving = null;
-const isMoving = p => moving && moving.p === p;
+let moving = null, placedAt = -1e9;
+const isMoving = p => moving && (moving.p === p || moving.kids.some(k => k.p === p));
 const handsFull = () => !!(N.S.kitchen && N.S.kitchen.held);
 function rebuild() {
   if (!N.S || !N.S.furn) return;
@@ -208,8 +223,8 @@ function rebuild() {
   N.env.lampPos = null; N.env.monPos = null; N.env.extraLight = null;
   for (const p of placed) {
     const d = DEFS[p.type];
-    if (d.solid !== false && !d.flat) { const r = rect(p); N.solids.push(r); mySolids.push(r); }
-    for (const [id, prompt, b] of d.things ? d.things(p) : []) {
+    if (d.solid !== false && !d.flat && !p.on) { const r = rect(p); N.solids.push(r); mySolids.push(r); }
+    for (const [id, prompt, b] of d.things && !(sitting && sitting.p === p) ? d.things(p) : []) { // the seat you're in can't block what you look at
       const key = p.uid + '|' + id; let t = thingCache[key];
       if (!t) t = thingCache[key] = { id, prompt, box: xfBox(p, b) }; else t.box = xfBox(p, b);
       N.things.push(t); myThings.push(t);
@@ -233,11 +248,17 @@ const overlap = (a, b) => a[0] < b[2] - 0.001 && a[2] > b[0] + 0.001 && a[1] < b
 function fixedSolids() { return N.solids.filter(s => !mySolids.includes(s)); }
 function why(p, x, z, r) {
   const d = DEFS[p.type], R = rect(p, x, z, r);
+  if (moving && moving.p === p && moving.on) { // sitting on another piece
+    const s = moving.surf;
+    if (R[0] < s.r[0] - 0.001 || R[1] < s.r[1] - 0.001 || R[2] > s.r[2] + 0.001 || R[3] > s.r[3] + 0.001) return "It doesn't fit up there";
+    for (const q of F().pieces) if (q !== p && q.on === moving.on && !isMoving(q) && overlap(R, rect(q))) return `The ${DEFS[q.type].name.toLowerCase()} is in the way`;
+    return null;
+  }
   if (R[0] < -0.001 || R[1] < -0.001 || R[2] > N.ROOM.w + 0.001 || R[3] > N.ROOM.d + 0.001) return 'Too close to the wall';
   if (!d.flat && d.solid !== false) for (const k of KEEP_CLEAR) if (overlap(R, k.r)) return k.why;
   if (!d.flat) for (const s of fixedSolids()) if (overlap(R, s)) return "Something's in the way";
   for (const q of F().pieces) {
-    if (q === p || isMoving(q)) continue;
+    if (q === p || isMoving(q) || q.on) continue;
     const qd = DEFS[q.type];
     if (!!qd.flat !== !!d.flat) continue; // rugs go under things
     if (overlap(R, rect(q))) return `It would hit the ${qd.name.toLowerCase()}`;
@@ -256,58 +277,136 @@ function aimedPiece() {
   const { o, d } = aimRay(); let best = null, bt = 2.6;
   for (const p of F().pieces) {
     if (isMoving(p)) continue;
-    const R = rect(p), h = Math.max(0.05, DEFS[p.type].h), lo = [R[0], 0, R[1]], hi = [R[2], h, R[3]];
-    let t0 = 0, t1 = bt, ok = true;
+    const R = rect(p), y0 = p.y || 0, h = Math.max(0.05, DEFS[p.type].h), lo = [R[0], y0, R[1]], hi = [R[2], y0 + h, R[3]];
+    let t0 = 0, t1 = 2.6, ok = true;
     for (let a = 0; a < 3; a++) {
       if (Math.abs(d[a]) < 1e-6) { if (o[a] < lo[a] || o[a] > hi[a]) { ok = false; break; } continue; }
       let ta = (lo[a] - o[a]) / d[a], tb = (hi[a] - o[a]) / d[a]; if (ta > tb) [ta, tb] = [tb, ta];
       t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) { ok = false; break; }
     }
-    if (ok && t0 < bt) { bt = t0; best = p; }
+    if (ok && (best && p.on && !best.on || !(best && best.on && !p.on) && t0 < bt)) { bt = t0; best = p; } // things sitting on top win over what they sit on
   }
   return best;
 }
 function ghostTarget() {
   const { o, d } = aimRay(), p = moving.p, [w, dd] = dims(p);
+  const snap = v => Math.round(v / 0.05) * 0.05;
+  moving.on = null; moving.surf = null;
+  if (DEFS[p.type].stack && d[1] < -0.05) {
+    let best = null, bt = 3.2;
+    for (const q of F().pieces) {
+      if (isMoving(q) || q.on) continue;
+      const s = surfaceOf(q); if (!s) continue;
+      const t = (o[1] - s.y) / -d[1]; if (t <= 0 || t >= bt) continue;
+      const hx = o[0] + d[0] * t, hz = o[2] + d[2] * t;
+      if (hx >= s.r[0] && hx <= s.r[2] && hz >= s.r[1] && hz <= s.r[3]) { bt = t; best = { q, s, hx, hz }; }
+    }
+    if (best) {
+      const { s } = best; moving.on = best.q.uid; moving.surf = s; moving.gy = s.y;
+      const x = Math.max(s.r[0], Math.min(s.r[2] - w, snap(best.hx - w / 2))), z = Math.max(s.r[1], Math.min(s.r[3] - dd, snap(best.hz - dd / 2)));
+      return [+x.toFixed(3), +z.toFixed(3)];
+    }
+  }
+  moving.gy = 0;
   let hx, hz;
   const t = d[1] < -0.08 ? o[1] / -d[1] : Infinity;
   if (t < 3.2) { hx = o[0] + d[0] * t; hz = o[2] + d[2] * t; }
   else { const k = Math.hypot(d[0], d[2]) || 1; hx = o[0] + d[0] / k * 1.9; hz = o[2] + d[2] / k * 1.9; }
-  const snap = v => Math.round(v / 0.05) * 0.05;
   const x = Math.max(0, Math.min(N.ROOM.w - w, snap(hx - w / 2))), z = Math.max(0, Math.min(N.ROOM.d - dd, snap(hz - dd / 2)));
   return [+x.toFixed(3), +z.toFixed(3)];
 }
 function startMove(p, from) {
+  if (sitting) standUp();
   if (moving) cancelMove();
   if (from !== 'room') { const i = F().store.indexOf(p); if (i >= 0) F().store.splice(i, 1); p.r = p.r || 0; p.x = p.x || 0; p.z = p.z || 0; F().pieces.push(p); }
-  moving = { p, from, orig: { x: p.x, z: p.z, r: p.r }, gx: p.x, gz: p.z, why: null };
+  moving = { p, from, orig: { x: p.x, z: p.z, r: p.r, y: p.y || 0, on: p.on || null }, gx: p.x, gz: p.z, gy: p.y || 0, why: null, on: null, surf: null, kids: [] };
+  // anything sitting on this piece rides along: remember where it sits in the piece's own space
+  for (const k of onTop(p)) {
+    const [kw, kd] = dims(k), [lx, lz] = toLocal(p, k.x + kw / 2, k.z + kd / 2);
+    moving.kids.push({ p: k, lx, lz, dr: (k.r - p.r + 4) % 4, orig: { x: k.x, z: k.z, r: k.r, y: k.y } });
+  }
   rebuild(); thud(300); showHint();
 }
 function cancelMove(silent) {
   if (!moving) return;
   const { p, from, orig } = moving;
-  if (from === 'room') Object.assign(p, orig);
+  if (from === 'room') { Object.assign(p, orig); for (const k of moving.kids) Object.assign(k.p, k.orig); }
   else { F().pieces.splice(F().pieces.indexOf(p), 1); F().store.push(p); if (!silent) N.toast(`${DEFS[p.type].name} is in storage. Place it from the Nestly app.`); }
-  moving = null; if (!silent) { rebuild(); N.save(); } showHint();
+  moving = null; placedAt = performance.now(); if (!silent) { rebuild(); N.save(); } showHint();
 }
 function placeMove() {
   if (!moving) return;
   if (moving.why) { N.toast(moving.why, 'bad', 1600); thud(120); return; }
-  const p = moving.p; p.x = moving.gx; p.z = moving.gz;
-  moving = null; rebuild(); N.save(); thud(200); showHint();
+  const p = moving.p; p.x = moving.gx; p.z = moving.gz; p.y = moving.gy || 0; p.on = moving.on || null;
+  for (const k of kidPoses()) Object.assign(k.p, k.pose);
+  moving = null; placedAt = performance.now(); rebuild(); N.save(); thud(200); showHint();
 }
 function storeMove() {
   if (!moving) return;
   const p = moving.p;
   if (DEFS[p.type].essential) { N.toast(`You need your ${DEFS[p.type].name.toLowerCase()}. It can be moved, not stored.`, 'bad', 2400); return; }
-  F().pieces.splice(F().pieces.indexOf(p), 1); F().store.push(p);
-  moving = null; rebuild(); N.save(); showHint();
-  N.toast(`${DEFS[p.type].name} put in storage.`);
+  const kids = moving.kids.map(k => k.p);
+  for (const q of [p, ...kids]) { F().pieces.splice(F().pieces.indexOf(q), 1); q.on = null; q.y = 0; F().store.push(q); }
+  moving = null; placedAt = performance.now(); rebuild(); N.save(); showHint();
+  N.toast(`${DEFS[p.type].name}${kids.length ? ' (and what was on it)' : ''} put in storage.`);
+}
+// where the riders end up for the current ghost pose
+function kidPoses() {
+  const sp = { ...moving.p, x: moving.gx, z: moving.gz, y: moving.gy || 0 }, sy = (surfaceOf(sp) || { y: 0 }).y;
+  return moving.kids.map(k => {
+    const [cx, cz] = xfPt(sp, k.lx, k.lz), r = (sp.r + k.dr) % 4, [kw, kd] = dims({ ...k.p, r });
+    return { p: k.p, pose: { x: +(cx - kw / 2).toFixed(3), z: +(cz - kd / 2).toFixed(3), r, y: sy, on: sp.uid } };
+  });
 }
 function thud(f) {
   try { const a = thud.ctx = thud.ctx || new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
     o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.08, a.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.15);
     o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + 0.16); } catch (e) {}
+}
+
+// ---------------------------------------------------------------------
+// Sitting: E on a chair / beanbag / couch turns you around and sits you down. Look around freely;
+// W A S D / Space (or E on the seat) stands you up. T does the seat's thing (watch TV, chill).
+// ---------------------------------------------------------------------
+const seatPrompt = (p, txt) => sitting && sitting.p === p ? 'Stand up' : txt;
+const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
+const EYE_STAND = () => N.P.y;
+function sitDown(p) {
+  const st = DEFS[p.type].seat, P = N.P; if (!st || moving) return;
+  // nearest free spot (couches have three)
+  let best = null;
+  for (const [sx, sz] of st.at) { const [x, z] = xfPt(p, sx, sz), d = Math.hypot(x - P.x, z - P.z); if (!best || d < best.d) best = { x, z, d, sx, sz }; }
+  const [fx, fz] = xfPt(p, best.sx, best.sz + st.face), yaw = Math.atan2(-(fx - best.x), -(fz - best.z));
+  sitting = { p, x: best.x, z: best.z, y: (p.y || 0) + st.y, yaw, legs: st.legs, eye: st.eye, from: { x: P.x, z: P.z }, t: 0,
+    sx: P.x, sz: P.z, syaw: P.yaw, kind: p.type };
+  thud(160); placedAt = performance.now(); rebuild();
+}
+function standUp() {
+  if (!sitting) return;
+  const P = N.P; P.x = sitting.from.x; P.z = sitting.from.z;
+  sitting = null; placedAt = performance.now(); thud(240); rebuild();
+}
+function seatAction() {
+  if (!sitting) return;
+  if (sitting.kind === 'couch') { if (anyTvOn()) pass(60, `You watched ${pick(SHOWS)}.`); else pass(30, 'You stared at nothing for half an hour. Bliss.'); }
+  else if (sitting.kind.startsWith('beanbag')) pass(15, 'You sink deeper into the beanbag. It sighs. So do you.');
+}
+N.sitPose = () => sitting && sitting.t > 0.25 ? { x: sitting.x, z: sitting.z, y: sitting.y, yaw: sitting.yaw, legs: sitting.legs } : null;
+N.hooks.speed.push(() => sitting ? 0 : 1);
+N.hooks.camera.push(() => {
+  if (!sitting || N.S.view === 'third') return null; // third person: character.js's camera wins (it's registered later)
+  const P = N.P, k = Math.min(1, sitting.t / 0.45), e = k * k * (3 - 2 * k), eye = sitting.eye * (P.y / 1.62);
+  return { x: P.x, y: P.y + (eye - P.y) * e, z: P.z, yaw: P.yaw, pitch: P.pitch };
+});
+function updateSitting(dt) {
+  if (!sitting) return;
+  const P = N.P; sitting.t += dt;
+  const k = Math.min(1, sitting.t / 0.45), e = k * k * (3 - 2 * k);
+  if (k < 1) { // walk in, turn around and drop into the seat
+    P.x = sitting.sx + (sitting.x - sitting.sx) * e; P.z = sitting.sz + (sitting.z - sitting.sz) * e;
+    P.yaw = sitting.syaw + angDiff(sitting.syaw, sitting.yaw) * e; P.pitch *= 0.9;
+  } else { P.x = sitting.x; P.z = sitting.z; }
+  if (!F().pieces.includes(sitting.p)) standUp(); // seat got stored / sold
 }
 
 // hint bar at the bottom of the screen
@@ -319,10 +418,14 @@ document.body.appendChild(hint);
 let hintKey = '';
 function showHint(aim) {
   let html = '';
-  if (moving) {
+  if (sitting) {
+    const tv = anyTvOn(), act = sitting.kind === 'couch' ? (tv ? 'watch TV (1 h)' : 'zone out (30 min)') : sitting.kind.startsWith('beanbag') ? 'chill (15 min)' : '';
+    html = `Sitting · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>Space</kbd> stand up${act ? ` · <kbd>T</kbd> ${act}` : ''}`;
+  } else if (moving) {
     const d = DEFS[moving.p.type];
     html = `Placing <b>${d.icon} ${d.name}</b> · <kbd>R</kbd> rotate · <kbd>E</kbd>/click place · <kbd>Q</kbd> cancel${d.essential ? '' : ' · <kbd>X</kbd> storage'}` +
-      (moving.why ? `<br><span style="color:#ff8a8a">${moving.why}</span>` : '<br><span style="color:#8affb0">Fits here</span>');
+      (moving.why ? `<br><span style="color:#ff8a8a">${moving.why}</span>` : `<br><span style="color:#8affb0">${moving.on ? `Fits on the ${DEFS[F().pieces.find(q => q.uid === moving.on).type].name.toLowerCase()}` : 'Fits here'}</span>`) +
+      (d.stack && !moving.on ? '<br><span style="color:#aab">Aim at a bed, desk, table, couch or shelf to put it on top</span>' : '');
   } else if (aim) html = `<kbd>F</kbd> Move ${DEFS[aim.type].name.toLowerCase()}`;
   if (html === hintKey) return;
   hintKey = html; hint.innerHTML = html; hint.style.display = html ? 'block' : 'none';
@@ -337,6 +440,11 @@ N.hooks.key.push(code => {
     else if (code === 'KeyX' || code === 'Delete' || code === 'Backspace') storeMove();
     return;
   }
+  if (sitting) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code) && sitting.t > 0.3) standUp();
+    else if (code === 'KeyT') seatAction();
+    return;
+  }
   if (code === 'KeyF' && !handsFull()) { const p = aimedPiece(); if (p) startMove(p, 'room'); } // F also eats a held dish (cooking.js)
 });
 document.addEventListener('mousedown', e => {
@@ -348,9 +456,11 @@ document.addEventListener('wheel', e => { if (moving && N.active) { moving.p.r =
 
 // per frame: ghost position, hint, plant droop on a new day, animated glows
 let lastDay = 0;
-N.hooks.update.push(() => {
+N.hooks.update.push(dt => {
   if (!N.S || !N.S.furn) return;
-  if (moving) {
+  updateSitting(dt);
+  if (sitting) showHint();
+  else if (moving) {
     [moving.gx, moving.gz] = ghostTarget();
     moving.why = why(moving.p, moving.gx, moving.gz, moving.p.r);
     showHint();
@@ -360,8 +470,9 @@ N.hooks.update.push(() => {
 });
 N.hooks.draw.push(() => {
   if (!moving || !N.S) return;
-  const p = moving.p, ghost = { ...p, x: moving.gx, z: moving.gz };
-  N.withXF(xfOf(ghost, moving.why ? [1, 0.25, 0.25] : [0.3, 1, 0.45]), () => DEFS[p.type].build(p));
+  const p = moving.p, ghost = { ...p, x: moving.gx, z: moving.gz, y: moving.gy || 0 }, tint = moving.why ? [1, 0.25, 0.25] : [0.3, 1, 0.45];
+  N.withXF(xfOf(ghost, tint), () => DEFS[p.type].build(p));
+  for (const k of kidPoses()) N.withXF(xfOf({ ...k.p, ...k.pose }, tint), () => DEFS[k.p.type].build(k.p));
 });
 // glow groups for TV / lava / tank / floor lamp / arcade (animated in render time)
 (function glowLoop() {
@@ -385,12 +496,12 @@ const SHOWS = ['a cooking show where nobody is allowed to use salt', 'three epis
 const BOOKS = ['a self-help book. You feel judged', 'half a fantasy novel with a 9-page map', 'a cookbook. You are now hungry', 'a book about stocks. Crypto seems easier', 'a comic. Twice'];
 function pass(mins, msg, kind = '') { N.advance(mins); N.updateHUD(); N.save(); N.toast(msg, kind, 3400); }
 N.hooks.interact.push(id => {
-  if (moving) return true; // E places while moving (handled in the key hook)
+  // while moving, and for a moment after placing, clicks / E only place: the click that drops the bed mustn't also put you to sleep
+  if (moving || performance.now() - placedAt < 600) return true;
   if (!id.startsWith('f:')) return false;
   const [, uid, act] = id.split(':'), p = F().pieces.find(q => q.uid === +uid), f = F();
   if (!p) return true;
-  if (act === 'couch') { if (anyTvOn()) pass(60, `You watched ${pick(SHOWS)}.`); else pass(30, 'You sat on the couch and stared at nothing for half an hour. Bliss.'); }
-  else if (act === 'flop') pass(15, 'You flop onto the beanbag. It sighs. So do you.');
+  if (act === 'sit') { if (sitting && sitting.p === p) standUp(); else sitDown(p); }
   else if (act === 'tv') { f.tvOn = !f.tvOn; thud(f.tvOn ? 500 : 250); N.save(); if (f.tvOn && !f.pieces.some(q => q.type === 'couch')) N.toast('Get a couch from Nestly to actually watch it.', '', 2600); }
   else if (act === 'read') pass(30, `You read ${pick(BOOKS)}.`);
   else if (act === 'water') { if (p.water === dayNow() && !thirsty(p)) N.toast("It's had enough water today."); else { p.water = dayNow(); rebuild(); N.save(); N.toast('Glug glug. The plant perks up.', 'good'); } }
@@ -448,7 +559,7 @@ function render(body) {
   const byUid = (arr, u) => arr.find(p => p.uid === +u);
   body.querySelectorAll('[data-place]').forEach(b => b.onclick = () => { const p = byUid(f.store, b.dataset.place); if (p) { N.closePC(); startMove(p, 'store'); } });
   body.querySelectorAll('[data-move]').forEach(b => b.onclick = () => { const p = byUid(f.pieces, b.dataset.move); if (p) { N.closePC(); startMove(p, 'room'); } });
-  body.querySelectorAll('[data-stash]').forEach(b => b.onclick = () => { const p = byUid(f.pieces, b.dataset.stash); if (p && !DEFS[p.type].essential) { f.pieces.splice(f.pieces.indexOf(p), 1); f.store.push(p); rebuild(); N.save(); render(body); } });
+  body.querySelectorAll('[data-stash]').forEach(b => b.onclick = () => { const p = byUid(f.pieces, b.dataset.stash); if (p && !DEFS[p.type].essential) { for (const q of [p, ...onTop(p)]) { f.pieces.splice(f.pieces.indexOf(q), 1); q.on = null; q.y = 0; f.store.push(q); } rebuild(); N.save(); render(body); } });
   body.querySelectorAll('[data-sell]').forEach(b => b.onclick = () => {
     const p = byUid(f.store, b.dataset.sell); if (!p) return;
     const v = sellValue(p.type); f.store.splice(f.store.indexOf(p), 1);
@@ -472,5 +583,5 @@ setTimeout(() => N.pcAddApp('furni', '🛋', 'Nestly', 'linear-gradient(135deg,#
 N.hooks.fresh.push(ensure);
 if (N.S) ensure(N.S);
 
-window.__furn = { DEFS, get F() { return F(); }, get moving() { return moving; }, startMove, placeMove, cancelMove, storeMove, rebuild, why, aimedPiece, buy, render };
+window.__furn = { DEFS, get F() { return F(); }, get moving() { return moving; }, get sitting() { return sitting; }, startMove, placeMove, cancelMove, storeMove, rebuild, why, aimedPiece, buy, render };
 })();

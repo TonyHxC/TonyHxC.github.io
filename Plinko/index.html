@@ -883,11 +883,13 @@ function drawDragon() {
 // another bucket when hit and every 15 s. Meanwhile heads slither out of the side walls along the gaps between peg rows,
 // snarl, and lunge at nearby balls: a bite steals half the ball's points and flings it. Every heart hit grows a head (max 3 at once).
 const HYDRA = { id: 'hydra', name: 'Hydra', desc: 'Its heart beats in one of the buckets: land balls on it. Heads slither out between the pegs and bite your balls.' };
-const HYDRA_HP = 0.55, HYDRA_BALLS = 3, HEART_R = 22, HEART_MULT = 4, HEART_MOVE = 15;
+const HYDRA_HP = 0.9, HYDRA_BALLS = 3, HEART_R = 22, HEART_MULT = 4, HEART_MOVE = 15;
 let hydra = null;
 const hpBoss = () => dragon || hydra;
-function newHydra() { return { heart: (Math.random() * BUCKET_COUNT) | 0, heartT: 0, hurt: 0, hits: 0, dead: false, deadT: 0, heads: [], spawnT: 2.2, hop: 0 }; }
-function heartPos() { const pulse = beatOf(time); return { x: bucketX(hydra.heart), y: BUCKET_TOP + 16 - hydra.hop * 30, r: HEART_R * (1 + 0.1 * pulse) }; }
+function newHydra() { return { heart: (Math.random() * BUCKET_COUNT) | 0, heartT: 0, hurt: 0, hits: 0, dead: false, deadT: 0, heads: [], spawnT: 2.2, hop: 0, beat: 0 }; }
+// rage 0..1 = how much of its HP is gone. More rage: more heads, faster, longer reach, hungrier bites, faster heartbeat
+const rage = () => Math.min(1, fl.score / fl.target);
+function heartPos() { const pulse = beatOf(hydra.beat); return { x: bucketX(hydra.heart), y: BUCKET_TOP + 16 - hydra.hop * 30, r: HEART_R * (1 + 0.1 * pulse) }; }
 function beatOf(t) { const k = (t * 1.3) % 1; return Math.max(Math.exp(-((k - 0.05) ** 2) / 0.002), 0.6 * Math.exp(-((k - 0.22) ** 2) / 0.002)); } // lub-dub
 function moveHeart() {
   const opts = []; for (let i = 0; i < BUCKET_COUNT; i++) if (Math.abs(i - hydra.heart) >= 2) opts.push(i);
@@ -896,31 +898,35 @@ function moveHeart() {
 }
 const laneY = r => PEG_TOP + r * ROW_GAP + ROW_GAP / 2;
 function spawnHead() {
-  const side = Math.random() < 0.5 ? -1 : 1, lane = 1 + ((Math.random() * 10) | 0);
-  const busy = hydra.heads.some(h => h.lane === lane);
-  hydra.heads.push({ side, lane: busy ? (lane + 3) % 11 + 1 : lane, ext: 0, reach: 170 + Math.random() * 200, phase: 'out', t: 0, hx: 0, hy: 0, oy: 0, jaw: 0, target: null, wob: Math.random() * 6 });
+  const side = Math.random() < 0.5 ? -1 : 1, free = [];
+  for (let l = 1; l <= 11; l++) if (!hydra.heads.some(h => h.lane === l)) free.push(l);
+  if (!free.length) return;
+  const lane = free[(Math.random() * free.length) | 0], rg = rage();
+  hydra.heads.push({ side, lane, ext: 0, reach: 170 + Math.random() * 200 + 150 * rg, hold: 3.5 + 3 * rg, phase: 'out', t: 0, hx: 0, hy: 0, oy: 0, jaw: 0, target: null, wob: Math.random() * 6 });
   snarl(0.8);
 }
 function snarl(len) { sfxNoise(len, 0.06, 260); sfx(65 + Math.random() * 20, len, 'sawtooth', 0.06); }
 function updateHydra(dt) {
   const h = hydra;
   h.hurt = Math.max(0, h.hurt - dt * 3); h.hop = Math.max(0, h.hop - dt * 3);
+  h.beat += dt * (1 + 1.4 * rage()); // heartbeat speeds up as it gets hurt
+  const rg = rage(), spd = 1 + rg;
   if (h.dead) { h.deadT += dt; for (const hd of h.heads) hd.phase = 'back'; }
   else if (!fl.choice) {
     h.heartT += dt; if (h.heartT > HEART_MOVE) moveHeart();
-    const maxHeads = Math.min(3, 2 + h.hits);
-    h.spawnT -= dt; if (h.spawnT <= 0) { if (h.heads.length < maxHeads) spawnHead(); h.spawnT = 2 + Math.random() * 2.5; }
+    const rg = rage(), maxHeads = 2 + Math.floor(rg * 4); // 2 heads at full health, up to 6 when nearly dead
+    h.spawnT -= dt; if (h.spawnT <= 0) { if (h.heads.length < maxHeads) spawnHead(); h.spawnT = (2 + Math.random() * 2.5) * (1 - 0.65 * rg); }
   }
   for (let i = h.heads.length - 1; i >= 0; i--) {
     const hd = h.heads[i]; hd.t += dt; hd.wob += dt * 5;
     const x0 = hd.side < 0 ? WALL_L - 14 : WALL_R + 14, dir = -hd.side, ly = laneY(hd.lane);
-    if (hd.phase === 'out') { hd.ext = Math.min(hd.reach, hd.ext + 150 * dt); if (hd.ext >= hd.reach && hd.t > 3.5) hd.phase = 'back'; }
+    if (hd.phase === 'out') { hd.ext = Math.min(hd.reach, hd.ext + 150 * spd * dt); if (hd.ext >= hd.reach && hd.t > hd.hold) hd.phase = 'back'; }
     else if (hd.phase === 'back') { hd.ext -= 230 * dt; hd.oy *= 0.9; if (hd.ext <= 0) { h.heads.splice(i, 1); continue; } }
     // hunt: lunge at the nearest ball within reach of the head
-    let tgt = null, best = 95;
+    let tgt = null, best = 95 + 70 * rg;
     if (hd.phase === 'out') for (const b of balls) { const d = Math.hypot(b.x - hd.hx, b.y - hd.hy); if (d < best && !b.bitten) { best = d; tgt = b; } }
     hd.target = tgt;
-    if (tgt) { const want = Math.max(-34, Math.min(34, tgt.y - ly)); hd.oy += (want - hd.oy) * Math.min(1, dt * 8); hd.ext += Math.sign((tgt.x - x0) * dir - hd.ext) * 260 * dt; hd.ext = Math.max(20, Math.min(WALL_R - WALL_L, hd.ext)); hd.jaw = 0.5 + 0.5 * Math.sin(hd.t * 22); if (!hd.growled) { hd.growled = true; snarl(0.5); } }
+    if (tgt) { const want = Math.max(-34 - 12 * rg, Math.min(34 + 12 * rg, tgt.y - ly)); hd.oy += (want - hd.oy) * Math.min(1, dt * 8); hd.ext += Math.sign((tgt.x - x0) * dir - hd.ext) * 260 * (1 + 0.8 * rg) * dt; hd.ext = Math.max(20, Math.min(WALL_R - WALL_L, hd.ext)); hd.jaw = 0.5 + 0.5 * Math.sin(hd.t * 22); if (!hd.growled) { hd.growled = true; snarl(0.5); } }
     else { hd.oy *= 1 - Math.min(1, dt * 3); hd.jaw = 0.25 + 0.25 * Math.sin(hd.t * 4); }
     hd.hx = x0 + dir * hd.ext; hd.hy = ly + hd.oy + Math.sin(hd.wob) * 5;
   }
@@ -930,7 +936,7 @@ function hydraBallStep(b) {
   for (const hd of hydra.heads) {
     if (!b.bitten && hd.phase !== 'back' && Math.hypot(b.x - hd.hx, b.y - hd.hy) < b.r + 19) {
       b.bitten = true;
-      const lost = Math.ceil(b.pts / 2); b.pts -= lost;
+      const lost = Math.ceil(b.pts * (0.5 + 0.25 * rage())); b.pts -= lost;
       const nx = (b.x - hd.hx) || -hd.side, ny = b.y - hd.hy, k = Math.hypot(nx, ny) || 1;
       b.vx = nx / k * 420; b.vy = Math.min(b.vy, ny / k * 300 - 120);
       addText(b.x, b.y - 22, lost ? `CHOMP! -${lost}` : 'CHOMP!', '#7dff9a', 18, 1.2);
@@ -952,7 +958,7 @@ function hydraBallStep(b) {
     for (let i = 0; i < 5; i++) setTimeout(() => burst(hp.x + (Math.random() - 0.5) * 70, hp.y - Math.random() * 40, i % 2 ? '#ff2a4a' : '#ffd166', 40, 340), i * 160);
     sfx(523, 0.2, 'triangle', 0.08); setTimeout(() => sfx(659, 0.2, 'triangle', 0.08), 140); setTimeout(() => sfx(1046, 0.4, 'triangle', 0.08), 280);
     toast('🐍 The Hydra is slain! +10 ●', 2200);
-  } else { moveHeart(); setTimeout(() => { if (hydra && !hydra.dead && hydra.heads.length < 3) spawnHead(); }, 400); } // hit it and it grows a head
+  } else { moveHeart(); for (let i = 0; i < 1 + Math.floor(rage() * 2); i++) setTimeout(() => { if (hydra && !hydra.dead && hydra.heads.length < 6) spawnHead(); }, 300 + i * 350); } // hit it and it grows heads
   updateHUD();
   return true;
 }
@@ -991,7 +997,7 @@ function drawHydra() {
   }
   if (h.dead && h.deadT > 1.2) return;
   // the beating heart in its bucket
-  const hp = heartPos(), s = hp.r / HEART_R * (h.dead ? Math.max(0, 1 - h.deadT) : 1), beat = beatOf(time);
+  const hp = heartPos(), s = hp.r / HEART_R * (h.dead ? Math.max(0, 1 - h.deadT) : 1), beat = beatOf(h.beat);
   ctx.save(); ctx.translate(hp.x, hp.y); ctx.scale(s, s);
   ctx.shadowColor = '#ff2a4a'; ctx.shadowBlur = 10 + 14 * beat;
   ctx.fillStyle = h.hurt > 0 ? '#ffffff' : '#c8102e';

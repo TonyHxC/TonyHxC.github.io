@@ -44,7 +44,7 @@ let G = { pos: [], nor: [], col: [], glow: [] };   // current build target (stat
 const STATIC_G = G;
 function intoGeometry(target, fn) { const prev = G; G = target; try { fn(); } finally { G = prev; } }
 // Furniture is built in its own local space (origin = min corner of its footprint, w×d) and placed with a
-// transform: offset (ox, oz) + quarter turns r (0..3, clockwise from above). Boxes stay axis-aligned under 90° turns.
+// transform: offset (ox, oz), lift oy (sitting on another piece) + quarter turns r (0..3, clockwise from above). Boxes stay axis-aligned under 90° turns.
 // `tint` blends every colour (the green/red ghost while you move a piece).
 let XF = null;
 function withXF(xf, fn) { const prev = XF; XF = xf; try { fn(); } finally { XF = prev; } }
@@ -63,7 +63,7 @@ function box(x, y, z, w, h, d, color, glow = 0, skip = '') {
   let c = typeof color === 'string' ? hex(color) : color;
   if (XF) {
     const [ax, az] = xfPt(x, z), [bx, bz] = xfPt(x + w, z + d);
-    x = Math.min(ax, bx); z = Math.min(az, bz); w = Math.abs(bx - ax); d = Math.abs(bz - az);
+    x = Math.min(ax, bx); z = Math.min(az, bz); w = Math.abs(bx - ax); d = Math.abs(bz - az); y += XF.oy || 0;
     for (let i = 0; i < XF.r; i++) skip = skip.split('').map(f => FACE_TURN[f] || f).join('');
     c = xfColor(c); if (XF.tint) glow = 0;
   }
@@ -80,7 +80,7 @@ function box(x, y, z, w, h, d, color, glow = 0, skip = '') {
 // vertical n-sided prism (cans, lamp stems, bins)
 function prism(cx, y, cz, r, h, color, sides = 8, glow = 0) {
   let c = typeof color === 'string' ? hex(color) : color;
-  if (XF) { [cx, cz] = xfPt(cx, cz); c = xfColor(c); if (XF.tint) glow = 0; }
+  if (XF) { [cx, cz] = xfPt(cx, cz); y += XF.oy || 0; c = xfColor(c); if (XF.tint) glow = 0; }
   for (let i = 0; i < sides; i++) {
     const a0 = i / sides * Math.PI * 2, a1 = (i + 1) / sides * Math.PI * 2, am = (a0 + a1) / 2;
     const x0 = cx + Math.cos(a0) * r, z0 = cz + Math.sin(a0) * r, x1 = cx + Math.cos(a1) * r, z1 = cz + Math.sin(a1) * r;
