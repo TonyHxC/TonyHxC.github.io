@@ -32,6 +32,25 @@ const foeFor = lv => {
 // ---------------------------------------------------------------------
 // Rules + payouts
 // ---------------------------------------------------------------------
+// custom bets: any whole amount from $1 to $MAX_BET (and no more than you have)
+const MAX_BET = 500;
+function customBetBox(chosen, presets) {
+  const c = !presets.includes(chosen);
+  return `<label class="cbet ${c ? 'on' : ''}" title="Any amount from $1 to $${MAX_BET}">Custom $<input type="number" min="1" max="${MAX_BET}" step="1" inputmode="numeric" value="${c ? chosen : ''}" placeholder="1–${MAX_BET}"></label><span class="cbet-msg"></span>`;
+}
+function wireCustomBet(root, money, apply) {
+  const inp = root.querySelector('.cbet input'), msg = root.querySelector('.cbet-msg'); if (!inp) return;
+  const check = () => {
+    const raw = inp.value.trim(); if (!raw) { msg.textContent = ''; return null; }
+    const v = Math.floor(+raw), have = Math.floor(money());
+    const err = !(v >= 1) ? 'The smallest bet is $1.' : v > MAX_BET ? `The biggest bet is $${MAX_BET}.` : v > have ? `You only have $${have.toLocaleString()}.` : '';
+    msg.textContent = err; return err ? null : v;
+  };
+  inp.oninput = check;
+  let done = false; // Enter and the blur that follows both fire: apply once
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
+  inp.onchange = () => { const v = check(); if (v && !done) { done = true; setTimeout(() => apply(v), 0); } };
+}
 const BETS = [10, 25, 50, 100, 250, 500];
 const MULT = [0, 1.3, 1.7, 2.2, 2.9, 3.8, 5, 6.5, 8.5, 11, 15]; // after N wins; past 10 each win ×1.3
 const mult = n => n < MULT.length ? MULT[n] : +(MULT[MULT.length - 1] * Math.pow(1.3, n - MULT.length + 1)).toFixed(1);
@@ -109,20 +128,21 @@ function render(b) {
 function renderBetScreen() {
   stopLoop();
   const S = N.S, st = stats();
-  if (chosenBet > S.money) chosenBet = BETS.filter(x => x <= S.money).pop() || BETS[0];
+  if (chosenBet > S.money) chosenBet = S.money >= 1 ? (BETS.filter(x => x <= S.money).pop() || Math.floor(S.money)) : BETS[0];
   body.innerHTML = `<div class="casino duel"><button class="back" id="duBack">← All games</button><h3>🤠 Duel</h3>
     <p>High noon. You get a six-shooter and <b>one bullet</b>. The empty cylinder spins: click a chamber as it whips past to drop your bullet in. Catch the <span style="color:#1b8a4a;font-weight:800">green</span> chamber and it fires on the first trigger pull; a <span style="color:#b8860b;font-weight:800">yellow</span> one next to it takes two; <span style="color:#c43a3a;font-weight:800">red</span> ones take three or four. Once loaded, the cylinder always stops with the green chamber under the hammer. Then click the <b>hammer</b> to cock and the <b>trigger</b> to fire, again and again until it goes bang. Shoot before they do.</p>
-    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}</div>
+    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}${customBetBox(chosenBet, BETS)}</div>
     <div class="ladder">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<div class="rung">Win ${n}<b>×${mult(n)}</b>${usd(chosenBet * mult(n))}<br><span style="font-size:10px">${timeLimit(n).toFixed(1)}s</span></div>`).join('')}</div>
     <p style="font-size:12px">Each opponent draws faster (the seconds under each rung). Cash out after any win, or keep dueling for a bigger payout. Lose a duel and the house keeps your bet. Past 10 wins, each win adds ×1.3.</p>
     <button class="wbtn gold" id="duGo" ${S.money < chosenBet ? 'disabled' : ''} style="font-size:16px;padding:12px 20px">Bet ${usd(chosenBet)} and duel</button>
     <p style="font-size:12px;margin-top:12px">Duels played <b>${st.runs}</b> · Best streak <b>${st.best}</b> · Wagered <b>${usd(st.wagered)}</b> · Won <b>${usd(st.won)}</b></p></div>`;
   body.querySelectorAll('[data-bet]').forEach(x => x.onclick = () => { chosenBet = +x.dataset.bet; renderBetScreen(); });
+  wireCustomBet(body, () => N.S.money, v => { chosenBet = v; renderBetScreen(); });
   body.querySelector('#duBack').onclick = () => N.casinoLobby();
   body.querySelector('#duGo').onclick = () => startRun(chosenBet);
 }
 function startRun(bet) {
-  const S = N.S; if (S.money < bet) return;
+  const S = N.S; if (S.money < bet || !(bet >= 1 && bet <= MAX_BET)) return;
   N.addMoney(-bet, 'Duel bet');
   const st = stats(); st.runs++; st.wagered += bet; N.save();
   run = { bet, level: 1, wins: 0 };

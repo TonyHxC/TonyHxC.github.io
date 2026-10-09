@@ -281,7 +281,7 @@ function drawCoreDynamic() {
 // lampPos / monPos follow the nightstand and desk when they're moved (null = not in the room); extraLight = a floor lamp
 const env = { cloud: 0, rain: 0, flash: 0, power: 1, glow: {}, selfVisible: false, lampPos: [1.29, 0.95, 0.25], monPos: [3.45, 1.15, 0.45], extraLight: null };
 // Glow groups: 1 sky, 2 monitor, 3 ceiling bulb, 4 lamp, 5 burner, 6 sun/moon, 7 stars, 8 city lights, 9 clouds, 10 rain, 11 lightning
-const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12, TV: 13, LAVA: 14, TANK: 15, FLOORLAMP: 16, ARCADE: 17 };
+const GLOW = { SKY: 1, MONITOR: 2, CEIL: 3, LAMP: 4, BURNER: 5, SUN: 6, STARS: 7, CITY: 8, CLOUD: 9, RAIN: 10, BOLT: 11, BATHCEIL: 12, TV: 13, LAVA: 14, TANK: 15, FLOORLAMP: 16, ARCADE: 17, MINER: 18, ASIC: 19 };
 // module hooks (cooking.js etc. register into these)
 const hooks = { interact: [], update: [], draw: [], drawSelf: [], key: [], hud: [], fresh: [], speed: [], camera: [], newLife: [], beforeSave: [] };
 // the active camera: first person by default; modules (character.js) may return {x,y,z,yaw,pitch,reach}
@@ -296,7 +296,7 @@ precision mediump float;
 varying vec3 vPos; varying vec3 vNor; varying vec3 vCol; varying float vGlow;
 uniform vec3 uAmbSky; uniform vec3 uAmbGround;
 uniform vec3 uLP[5]; uniform vec3 uLC[5];
-uniform vec3 uGlow[18];
+uniform vec3 uGlow[24];
 uniform vec4 uClip; uniform float uTint;
 uniform vec3 uWinPos; uniform vec3 uWinCol;
 uniform vec3 uSunDir; uniform vec3 uSunCol;
@@ -306,7 +306,7 @@ void main() {
   if (dot(vPos, uClip.xyz) + uClip.w < 0.0) discard;
   if (vGlow > 0.5) {
     vec3 g = vec3(1.0);
-    for (int i = 1; i < 18; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
+    for (int i = 1; i < 24; i++) { if (abs(vGlow - float(i)) < 0.5) g = uGlow[i]; }
     gl_FragColor = vec4(g * mix(vec3(1.0), vCol, 0.25) * uTint, 1.0); return;
   }
   vec3 n = normalize(vNor);
@@ -450,7 +450,7 @@ function render() {
   const sun = sunState(h);
   gl.uniform3fv(uni.uSunDir, sun.dir);
   gl.uniform3fv(uni.uSunCol, sun.col.map(v => v * sun.k * Math.pow(1 - cl, 2.2)));
-  const glow = new Array(54).fill(0);
+  const glow = new Array(72).fill(0);
   const setG = (i, c) => { glow[i * 3] = c[0]; glow[i * 3 + 1] = c[1]; glow[i * 3 + 2] = c[2]; };
   setG(GLOW.SKY, skyC.map(v => Math.min(1, v * 1.15)));
   setG(GLOW.MONITOR, (internetOn() ? [0.42, 0.62, 1.0] : [0.55, 0.2, 0.2]).map(v => v * (0.2 + 0.8 * env.power)));
@@ -661,7 +661,17 @@ const START_MONEY = 300;
 const BILL_DEFS = {
   rent:     { name: 'Rent',     amount: 250, every: 7, firstDue: 7, late: 25, grace: 2 },
   internet: { name: 'Internet', amount: 40,  every: 7, firstDue: 4, late: 10, grace: 0 },
+  power:    { name: 'Electricity', amount: 0, every: 7, firstDue: 6, late: 15, grace: 3, metered: true },
 };
+// Electricity is metered: a connection fee plus every kWh used since the last bill. The bill is worked out on its due
+// day; pay it within `grace` days of that or the power gets cut off until you do. Mining rigs (mining.js) add to the meter.
+const POWER = { rate: 0.14, base: 15, house: 0.45 }; // $/kWh, $/bill, average household draw in kW (fridge, lights, PC...)
+function ensurePower(S) {
+  if (!S.power) S.power = { kwh: 0, cut: false, last: 0 };
+  if (!S.bills.some(b => b.id === 'power')) S.bills.push({ id: 'power', due: dayOf(S.t) + BILL_DEFS.power.firstDue, paid: false, late: false });
+}
+hooks.fresh.unshift(ensurePower);
+const powerEstimate = () => Math.round(POWER.base + (S.power ? S.power.kwh : 0) * POWER.rate);
 const BETS = [10, 25, 50, 100, 250, 500];
 // cash-out multiplier after clearing N floors (index = floors cleared). Beyond the table: ×1.25 per floor.
 const CASH_TABLE = [0, 1.1, 1.3, 1.6, 2, 2.8, 3.3, 4, 5, 6.2, 8];
@@ -676,7 +686,7 @@ function freshState() {
     bills: Object.entries(BILL_DEFS).map(([id, d]) => ({ id, due: d.firstDue, paid: false, late: false })),
     tx: [{ t: 8 * 60, desc: 'Opening balance', amt: START_MONEY }],
     stats: { runs: 0, wins: 0, busts: 0, best: 0, wagered: 0, won: 0 },
-    pos: null, evicted: false, lastDay: 1, code: newCode(),
+    pos: null, evicted: false, lastDay: 1, code: newCode(), power: { kwh: 0, cut: false, last: 0 },
   };
 }
 // ---- player codes: every character has one (e.g. K7QM-3XRP-9FHT). Saves are kept per code in this browser and,
@@ -750,7 +760,7 @@ const money = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString
 const dueLabel = due => { const d = due - dayOf(S.t); return d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue` : d === 0 ? 'due today' : d === 1 ? 'due tomorrow' : `due ${DAYS[(due - 1) % 7]} (Day ${due})`; };
 function bill(id) { return S.bills.find(b => b.id === id); }
 function internetOn() { if (!S) return true; const b = bill('internet'); return !(b && !b.paid && b.late); }
-function billCost(b) { return BILL_DEFS[b.id].amount + (b.late ? BILL_DEFS[b.id].late : 0); }
+function billCost(b) { const d = BILL_DEFS[b.id]; return (d.metered ? (b.issued ? b.amount : powerEstimate()) : d.amount) + (b.late ? d.late : 0); }
 
 function addMoney(amt, desc) {
   S.money += amt;
@@ -762,6 +772,7 @@ function addMoney(amt, desc) {
 // ---- time ----
 function advance(mins) {
   const before = dayOf(S.t);
+  if (S.power && !S.power.cut) S.power.kwh += POWER.house * mins / 60;
   S.t += mins;
   const after = dayOf(S.t);
   for (let d = before + 1; d <= after && !S.evicted; d++) newDay(d);
@@ -771,9 +782,14 @@ function newDay(d) {
   for (const b of S.bills) {
     const def = BILL_DEFS[b.id];
     if (b.paid) continue;
+    if (def.metered && !b.issued && d >= b.due) { // the electricity bill arrives: freeze the amount, start a new meter
+      b.issued = true; b.amount = powerEstimate(); b.kwh = Math.round(S.power.kwh); S.power.kwh = 0;
+      toast(`Electricity bill: ${money(b.amount)} for ${b.kwh} kWh. Due today.`, b.amount > 60 ? 'bad' : '', 7000);
+    }
+    if (def.metered && b.issued && d > b.due + def.grace && !S.power.cut) { S.power.cut = true; toast('The power company cut you off for an unpaid electricity bill. Pay it to get the lights back.', 'bad', 8000); }
     if (d > b.due && !b.late) {
       b.late = true;
-      toast(`${def.name} is overdue. +${money(def.late)} late fee.` + (b.id === 'internet' ? ' Your internet has been cut off.' : ` Pay within ${def.grace} days or you're out.`), 'bad', 7000);
+      toast(`${def.name} is overdue. +${money(def.late)} late fee.` + (b.id === 'internet' ? ' Your internet has been cut off.' : b.id === 'power' ? ` Pay within ${def.grace} days or the power gets cut off.` : ` Pay within ${def.grace} days or you're out.`), 'bad', 7000);
     }
     if (b.id === 'rent' && d > b.due + def.grace) { evict(); return; }
   }
@@ -785,14 +801,15 @@ function newDay(d) {
 }
 function payBill(id) {
   const b = bill(id), cost = billCost(b);
-  if (b.paid || S.money < cost) return;
+  if (b.paid || S.money < cost || (BILL_DEFS[id].metered && !b.issued)) return;
   addMoney(-cost, `${BILL_DEFS[id].name} payment`);
   const def = BILL_DEFS[id];
   const wasLate = b.late;
   b.paid = true;
   // queue next cycle immediately so there's always one bill per type
-  Object.assign(b, { due: b.due + def.every, paid: false, late: false });
-  toast(`${def.name} paid.` + (id === 'internet' && wasLate ? ' Internet restored.' : ''), 'good');
+  Object.assign(b, { due: b.due + def.every, paid: false, late: false, issued: false, amount: undefined, kwh: undefined });
+  const restored = id === 'power' && S.power.cut; if (restored) S.power.cut = false;
+  toast(`${def.name} paid.` + (id === 'internet' && wasLate ? ' Internet restored.' : '') + (restored ? ' The power is back on.' : ''), 'good');
   renderBills(); updateHUD(); save();
 }
 function evict() {
@@ -817,7 +834,8 @@ function updateHUD() {
   $('hudMoney').textContent = money(S.money);
   $('tbClock').textContent = clockStr(S.t);
   $('tbMoney').textContent = money(S.money);
-  const warn = S.bills.filter(b => !b.paid && b.due - dayOf(S.t) <= 1).map(b => `${BILL_DEFS[b.id].name} ${dueLabel(b.due)}`);
+  const warn = S.bills.filter(b => !b.paid && b.due - dayOf(S.t) <= 1 && !(BILL_DEFS[b.id].metered && !b.issued && b.due > dayOf(S.t))).map(b => `${BILL_DEFS[b.id].name} ${dueLabel(b.due)}`);
+  if (S.power && S.power.cut) warn.unshift('⚡ Power cut off');
   $('hudWarn').style.display = warn.length ? '' : 'none';
   $('hudWarn').textContent = warn.join(' · ');
 }
@@ -946,13 +964,17 @@ function renderBank() {
     ${S.tx.map(x => `<tr><td>${clockStr(x.t).split(' · ').slice(1).join(' · ')}</td><td>${x.desc}</td><td class="num ${x.amt >= 0 ? 'pos' : 'neg'}">${x.amt >= 0 ? '+' : ''}${money(x.amt)}</td></tr>`).join('')}</table>`;
 }
 function renderBills() {
-  $('billsBody').innerHTML = `<h3>Bills</h3><p>Rent and internet come every week. Late internet gets cut off; rent more than ${BILL_DEFS.rent.grace} days late gets you evicted.</p>
+  const pw = S.power || { kwh: 0 };
+  $('billsBody').innerHTML = `<h3>Bills</h3><p>Rent, internet and electricity come every week. Late internet gets cut off, the power gets cut ${BILL_DEFS.power.grace} days after a missed electricity bill, and rent more than ${BILL_DEFS.rent.grace} days late gets you evicted.</p>
+    <p style="font-size:13px">⚡ Electricity: ${money(POWER.base)} connection + $${POWER.rate.toFixed(2)} per kWh. Used since the last bill: <b>${pw.kwh.toFixed(1)} kWh</b> (about ${money(pw.kwh * POWER.rate)}).${pw.cut ? ' <b class="neg">Your power is cut off.</b>' : ''}</p>
     <table><tr><th>Bill</th><th>Status</th><th class="num">Amount</th><th></th></tr>
     ${S.bills.map(b => {
       const def = BILL_DEFS[b.id], cost = billCost(b), d = b.due - dayOf(S.t);
       const pill = b.late ? `<span class="pill late">${dueLabel(b.due)}</span>` : d <= 1 ? `<span class="pill due">${dueLabel(b.due)}</span>` : `<span class="pill ok">${dueLabel(b.due)}</span>`;
-      return `<tr><td><b>${def.name}</b></td><td>${pill}</td><td class="num">${money(cost)}${b.late ? ` <small>(incl. ${money(def.late)} late fee)</small>` : ''}</td>
-        <td class="num"><button class="wbtn" data-pay="${b.id}" ${S.money < cost ? 'disabled' : ''}>Pay</button></td></tr>`;
+      const pending = def.metered && !b.issued;
+      return `<tr><td><b>${def.name}</b>${def.metered && b.issued ? `<br><small>${b.kwh} kWh</small>` : ''}</td><td>${pending ? `<span class="pill ok">bill comes ${dueLabel(b.due).replace('due ', '')}</span>` : pill}</td>
+        <td class="num">${pending ? `~${money(cost)} so far` : money(cost)}${b.late ? ` <small>(incl. ${money(def.late)} late fee)</small>` : ''}</td>
+        <td class="num"><button class="wbtn" data-pay="${b.id}" ${S.money < cost || pending ? 'disabled' : ''}>Pay</button></td></tr>`;
     }).join('')}</table>`;
   for (const b of document.querySelectorAll('[data-pay]')) b.onclick = () => payBill(b.dataset.pay);
 }
@@ -960,6 +982,25 @@ const cashMult = n => n <= 0 ? 0 : n < CASH_TABLE.length ? CASH_TABLE[n] : CASH_
 let chosenBet = 25;
 // ---- PogeyCasino: a lobby of games. Plinko is the first; more can be added with POGEY.casinoAddGame ----
 let casinoView = 'lobby';
+// custom bets: any whole amount from $1 to $MAX_BET (and no more than you have)
+const MAX_BET = 500;
+function customBetBox(chosen, presets) {
+  const c = !presets.includes(chosen);
+  return `<label class="cbet ${c ? 'on' : ''}" title="Any amount from $1 to $${MAX_BET}">Custom $<input type="number" min="1" max="${MAX_BET}" step="1" inputmode="numeric" value="${c ? chosen : ''}" placeholder="1–${MAX_BET}"></label><span class="cbet-msg"></span>`;
+}
+function wireCustomBet(root, money, apply) {
+  const inp = root.querySelector('.cbet input'), msg = root.querySelector('.cbet-msg'); if (!inp) return;
+  const check = () => {
+    const raw = inp.value.trim(); if (!raw) { msg.textContent = ''; return null; }
+    const v = Math.floor(+raw), have = Math.floor(money());
+    const err = !(v >= 1) ? 'The smallest bet is $1.' : v > MAX_BET ? `The biggest bet is $${MAX_BET}.` : v > have ? `You only have $${have.toLocaleString()}.` : '';
+    msg.textContent = err; return err ? null : v;
+  };
+  inp.oninput = check;
+  let done = false; // Enter and the blur that follows both fire: apply once
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
+  inp.onchange = () => { const v = check(); if (v && !done) { done = true; setTimeout(() => apply(v), 0); } };
+}
 const CASINO_GAMES = [
   { id: 'plinko', icon: '◉', name: 'Plinko', desc: 'Roguelite Plinko. Bet, clear floors, cash out before you bust.', grad: 'linear-gradient(135deg,#7b5cff,#2fc4d6)', render: renderPlinkoBet },
   { id: 'blackjack', icon: '🂡', name: 'Blackjack', desc: 'Beat the dealer to 21.', grad: 'linear-gradient(135deg,#1f7a4c,#0f3d27)', soon: true },
@@ -985,20 +1026,21 @@ function renderCasino() {
   for (const b of body.querySelectorAll('[data-game]')) b.onclick = () => { casinoView = b.dataset.game; renderCasino(); };
 }
 function renderPlinkoBet(body) {
-  if (chosenBet > S.money) chosenBet = BETS.filter(b => b <= S.money).pop() || BETS[0];
+  if (chosenBet > S.money) chosenBet = S.money >= 1 ? (BETS.filter(x => x <= S.money).pop() || Math.floor(S.money)) : BETS[0];
   body.innerHTML = `<div class="casino"><button class="back" id="btnLobby">← All games</button><h3>◉ Plinko</h3>
     <p>Place a bet and play a run. After each floor you clear you can <b>cash out</b> at the multiplier below, or pick an upgrade and push on. Bust before cashing out and the house keeps your bet.</p>
-    <div class="bets">${BETS.map(b => `<button data-bet="${b}" class="${b === chosenBet ? 'on' : ''}" ${b > S.money ? 'disabled' : ''}>$${b}</button>`).join('')}</div>
+    <div class="bets">${BETS.map(b => `<button data-bet="${b}" class="${b === chosenBet ? 'on' : ''}" ${b > S.money ? 'disabled' : ''}>$${b}</button>`).join('')}${customBetBox(chosenBet, BETS)}</div>
     <div class="ladder">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<div class="rung">Floor ${n}${n % 5 === 0 ? ' ☠' : ''}<b>×${cashMult(n)}</b>${money(chosenBet * cashMult(n))}</div>`).join('')}</div>
     <p style="font-size:12px">☠ boss floor. Past floor 10 each floor adds another ×1.25.</p>
     <button class="wbtn gold" id="btnPlaceBet" ${S.money < chosenBet ? 'disabled' : ''} style="font-size:16px;padding:12px 20px">Bet ${money(chosenBet)} and play</button>
-    ${S.money < BETS[0] ? '<p class="neg">You can\'t afford the minimum bet.</p>' : ''}</div>`;
+    ${S.money < 1 ? '<p class="neg">You can\'t afford the minimum bet.</p>' : ''}</div>`;
   for (const b of body.querySelectorAll('[data-bet]')) b.onclick = () => { chosenBet = +b.dataset.bet; renderCasino(); };
+  wireCustomBet(body, () => S.money, v => { chosenBet = v; renderCasino(); });
   $('btnPlaceBet').onclick = () => startTable(chosenBet);
   $('btnLobby').onclick = () => { casinoView = 'lobby'; renderCasino(); };
 }
 function startTable(bet) {
-  if (S.money < bet || !internetOn()) return;
+  if (S.money < bet || !internetOn() || !(bet >= 1 && bet <= MAX_BET)) return;
   addMoney(-bet, `Plinko bet`);
   S.stats.runs++; S.stats.wagered += bet; save();
   tableBet = bet; atTable = true;
@@ -1297,6 +1339,7 @@ function frame(now) {
     if (!pcOpen && !modalOpen) movePlayer(dt);
     advance(dt * GAME_MIN_PER_SEC);
     for (const fn of hooks.update) fn(dt);
+    if (S.power && S.power.cut) env.power = 0;
     saveTimer += dt; if (saveTimer > 5) { saveTimer = 0; save(); }
     updateHUD();
   }
@@ -1426,7 +1469,8 @@ window.POGEY = {
   solids, ROOM, withXF, intoGeometry, setFurniture, advance, closePC, openPC, get hovered() { return hovered; }, get locked() { return locked; },
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
-  get view() { return lastView; }, titlePose, get paused() { return paused || sleeping; }, get titleMode() { return titleMode; }, get pcOpen() { return pcOpen; },
+  get view() { return lastView; }, POWER, get powerCut() { return !!(S && S.power && S.power.cut); },
+  addKwh(k) { if (S && S.power && !S.power.cut) S.power.kwh += k; }, payBill, renderBills, titlePose, get paused() { return paused || sleeping; }, get titleMode() { return titleMode; }, get pcOpen() { return pcOpen; },
   setBurnerGlow(c) { burnerGlow = c; },
   openModal() { modalOpen = true; document.exitPointerLock && document.exitPointerLock(); },
   closeModal() { modalOpen = false; if (started && !S.evicted) lockPointer(); },

@@ -34,6 +34,13 @@
   .bets button { font: inherit; font-size: 18px; font-weight: 900; padding: 14px 18px; border-radius: 10px; border: 2px solid var(--navy); background: #fff; color: var(--navy); cursor: pointer; min-width: 84px; }
   .bets button.on { background: var(--navy); color: #ffcf5a; }
   .bets button:disabled { opacity: .3; cursor: not-allowed; }
+  .bets .cbet { display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 2px solid var(--navy); background: #fff; color: var(--navy); font-weight: 900; font-size: 15px; cursor: text; }
+  .bets .cbet.on { background: var(--navy); color: #ffcf5a; }
+  .bets .cbet input { width: 78px; font: inherit; font-size: 18px; font-weight: 900; border: 0; border-bottom: 2px solid currentColor; background: transparent; color: inherit; padding: 9px 2px 5px; outline: none; -moz-appearance: textfield; }
+  .bets .cbet input::-webkit-outer-spin-button, .bets .cbet input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .bets .cbet input::placeholder { color: inherit; opacity: .4; }
+  .bets .cbet-msg { flex-basis: 100%; font-size: 12px; font-weight: 700; color: #c43a3a; }
+  .bets .cbet-msg:empty { display: none; }
   .back { font: inherit; font-size: 13px; font-weight: 800; background: none; border: 0; color: #55536a; cursor: pointer; padding: 0; margin-bottom: 8px; }
   .ladder { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 10px 0; }
   .rung { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px; text-align: center; font-size: 12px; color: #7a7790; }
@@ -50,7 +57,7 @@
   <div class="wallet"><small>Play chips</small><b id="ihBalance">$1,000</b><a href="../NEETLIFE/index.html" title="Ice Hop is also in the casino in Pogey Life">Play Pogey Life</a></div>
 </header>
 <main><div class="card"><div id="iceHopApp"></div></div></main>
-<footer><span>Play money only: chips have no value and are saved in this browser. Run out? You get a free refill.</span><span>Also in the PogeyCasino in <a href="../NEETLIFE/index.html">Pogey Life</a>.</span></footer>
+<footer><span>Play money only: chips have no value and are saved in this browser. Lose them all and it's game over: you start again with $1,000.</span><span>Also in the PogeyCasino in <a href="../NEETLIFE/index.html">Pogey Life</a>.</span></footer>
 <script src="icehop.js"></script>
 </body>
 </html>

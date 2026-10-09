@@ -188,6 +188,13 @@
   .bets button { font: inherit; font-size: 18px; font-weight: 900; padding: 14px 18px; border-radius: 10px; border: 2px solid #24223a; background: #fff; color: #24223a; cursor: pointer; min-width: 84px; }
   .bets button.on { background: #24223a; color: #ffcf5a; }
   .bets button:disabled { opacity: .3; cursor: not-allowed; }
+  .bets .cbet { display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 2px solid #24223a; background: #fff; color: #24223a; font-weight: 900; font-size: 15px; cursor: text; }
+  .bets .cbet.on { background: #24223a; color: #ffcf5a; }
+  .bets .cbet input { width: 78px; font: inherit; font-size: 18px; font-weight: 900; border: 0; border-bottom: 2px solid currentColor; background: transparent; color: inherit; padding: 9px 2px 5px; outline: none; -moz-appearance: textfield; user-select: text; }
+  .bets .cbet input::-webkit-outer-spin-button, .bets .cbet input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .bets .cbet input::placeholder { color: inherit; opacity: .4; }
+  .bets .cbet-msg { flex-basis: 100%; font-size: 12px; font-weight: 700; color: #c43a3a; }
+  .bets .cbet-msg:empty { display: none; }
   .casino { max-width: 640px; margin: 0 auto; }
   .lobby { max-width: 760px; margin: 0 auto; }
   .lobby-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
@@ -310,6 +317,7 @@
 <script src="character.js"></script>
 <script src="shop.js"></script>
 <script src="crypto.js"></script>
+<script src="mining.js"></script>
 <script src="duel.js"></script>
 <script src="physics2d.js"></script>
 <script src="cannon.js"></script>

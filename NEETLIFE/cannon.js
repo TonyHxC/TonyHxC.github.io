@@ -18,6 +18,26 @@ const mult = n => n < MULT.length ? MULT[n] : +(MULT[MULT.length - 1] * Math.pow
 const shotsFor = lv => lv <= 2 ? 3 : 4;
 const targetFor = lv => Math.min(0.75, 0.6 + (lv - 1) * 0.017);
 const usd = n => '$' + Math.round(n).toLocaleString();
+// custom bets: any whole amount from $1 to $MAX_BET (and no more than you have)
+const MAX_BET = 500;
+function customBetBox(chosen, presets) {
+  const c = !presets.includes(chosen);
+  return `<label class="cbet ${c ? 'on' : ''}" title="Any amount from $1 to $${MAX_BET}">Custom $<input type="number" min="1" max="${MAX_BET}" step="1" inputmode="numeric" value="${c ? chosen : ''}" placeholder="1–${MAX_BET}"></label><span class="cbet-msg"></span>`;
+}
+function wireCustomBet(root, money, apply) {
+  const inp = root.querySelector('.cbet input'), msg = root.querySelector('.cbet-msg'); if (!inp) return;
+  const check = () => {
+    const raw = inp.value.trim(); if (!raw) { msg.textContent = ''; return null; }
+    const v = Math.floor(+raw), have = Math.floor(money());
+    const err = !(v >= 1) ? 'The smallest bet is $1.' : v > MAX_BET ? `The biggest bet is $${MAX_BET}.` : v > have ? `You only have $${have.toLocaleString()}.` : '';
+    msg.textContent = err; return err ? null : v;
+  };
+  inp.oninput = check;
+  let done = false; // Enter and the blur that follows both fire: apply once
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
+  inp.onchange = () => { const v = check(); if (v && !done) { done = true; setTimeout(() => apply(v), 0); } };
+}
+
 
 // ---------------------------------------------------------------------
 // World constants (metres; the canvas shows 26 m across, y down). Structures go between ZX0 and ZX1.
@@ -202,20 +222,21 @@ function render(b) { body = b; if (run) return renderTable(); renderBetScreen();
 function renderBetScreen() {
   stopLoop();
   const S = N.S, st = stats();
-  if (chosenBet > S.money) chosenBet = BETS.filter(x => x <= S.money).pop() || BETS[0];
+  if (chosenBet > S.money) chosenBet = S.money >= 1 ? (BETS.filter(x => x <= S.money).pop() || Math.floor(S.money)) : BETS[0];
   body.innerHTML = `<div class="casino cannon"><button class="back" id="caBack">← All games</button><h3>💣 Cannon Crash</h3>
     <p>Knock it all down. <b>Click and drag</b> on the screen to aim the cannon (direction and power), then hit <b>Fire</b>. Blocks break when they take enough damage or get knocked down onto the ground. <b style="color:#c43a3a">TNT</b> goes off when hit. Do enough damage (the line on the bar) before your cannonballs run out to clear the level.</p>
-    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}</div>
+    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}${customBetBox(chosenBet, BETS)}</div>
     <div class="ladder">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<div class="rung">Level ${n}<b>×${mult(n)}</b>${usd(chosenBet * mult(n))}<br><span style="font-size:10px">${Math.round(targetFor(n) * 100)}% · ${shotsFor(n)} shots</span></div>`).join('')}</div>
     <p style="font-size:12px">Under each rung: damage needed and cannonballs you get. Cash out after any level, or keep going for a bigger payout. Run out of shots short of the target and the house keeps your bet. Past level 10, each level adds ×1.3.</p>
     <button class="wbtn gold" id="caGo" ${S.money < chosenBet ? 'disabled' : ''} style="font-size:16px;padding:12px 20px">Bet ${usd(chosenBet)} and play</button>
     <p style="font-size:12px;margin-top:12px">Runs <b>${st.runs}</b> · Best <b>${st.best} level${st.best === 1 ? '' : 's'}</b> · Wagered <b>${usd(st.wagered)}</b> · Won <b>${usd(st.won)}</b></p></div>`;
   body.querySelectorAll('[data-bet]').forEach(x => x.onclick = () => { chosenBet = +x.dataset.bet; renderBetScreen(); });
+  wireCustomBet(body, () => N.S.money, v => { chosenBet = v; renderBetScreen(); });
   body.querySelector('#caBack').onclick = () => N.casinoLobby();
   body.querySelector('#caGo').onclick = () => startRun(chosenBet);
 }
 function startRun(bet) {
-  const S = N.S; if (S.money < bet) return;
+  const S = N.S; if (S.money < bet || !(bet >= 1 && bet <= MAX_BET)) return;
   N.addMoney(-bet, 'Cannon Crash bet');
   const st = stats(); st.runs++; st.wagered += bet; N.save();
   run = { bet, cleared: 0 };

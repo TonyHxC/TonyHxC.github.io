@@ -24,6 +24,25 @@ const MODES = {
 };
 const multAt = (mode, n) => n <= 0 ? 1 : Math.floor(RTP / Math.pow(MODES[mode].p, n) * 100) / 100;
 const usd = n => '$' + Math.round(n).toLocaleString();
+// custom bets: any whole amount from $1 to $MAX_BET (and no more than you have)
+const MAX_BET = 500;
+function customBetBox(chosen, presets) {
+  const c = !presets.includes(chosen);
+  return `<label class="cbet ${c ? 'on' : ''}" title="Any amount from $1 to $${MAX_BET}">Custom $<input type="number" min="1" max="${MAX_BET}" step="1" inputmode="numeric" value="${c ? chosen : ''}" placeholder="1–${MAX_BET}"></label><span class="cbet-msg"></span>`;
+}
+function wireCustomBet(root, money, apply) {
+  const inp = root.querySelector('.cbet input'), msg = root.querySelector('.cbet-msg'); if (!inp) return;
+  const check = () => {
+    const raw = inp.value.trim(); if (!raw) { msg.textContent = ''; return null; }
+    const v = Math.floor(+raw), have = Math.floor(money());
+    const err = !(v >= 1) ? 'The smallest bet is $1.' : v > MAX_BET ? `The biggest bet is $${MAX_BET}.` : v > have ? `You only have $${have.toLocaleString()}.` : '';
+    msg.textContent = err; return err ? null : v;
+  };
+  inp.oninput = check;
+  let done = false; // Enter and the blur that follows both fire: apply once
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); };
+  inp.onchange = () => { const v = check(); if (v && !done) { done = true; setTimeout(() => apply(v), 0); } };
+}
 const fmtM = m => '×' + (m >= 100 ? Math.round(m).toLocaleString() : m >= 10 ? m.toFixed(1) : m.toFixed(2));
 // the "host": where money, stats and saving live
 const START_CHIPS = 1000;
@@ -48,7 +67,7 @@ const host = N ? {
     money: () => w.money, add: amt => { w.money = Math.round(w.money + amt); save(); }, store: () => w, save, passTime: () => {},
     toast: (msg, kind) => { const t = document.createElement('div'); t.className = 'ih-toast ' + (kind || ''); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); },
     lobby: null, visible: () => !!body && document.body.contains(body), paused: () => document.hidden,
-    refill: () => { w.money = START_CHIPS; save(); },
+    newGame: () => { w.money = START_CHIPS; w.games = (w.games || 1) + 1; save(); },
   };
 })();
 function fairRoll() { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] / 4294967296; }
@@ -109,26 +128,40 @@ document.head.appendChild(css);
 function render(b) { body = b; if (run) return renderTable(); renderBetScreen(); }
 function renderBetScreen() {
   stopLoop();
+  if (!N && host.money() < 1) return renderGameOver();
   const S = { money: host.money() }, st = stats();
-  if (chosenBet > S.money) chosenBet = BETS.filter(x => x <= S.money).pop() || BETS[0];
+  if (chosenBet > S.money) chosenBet = S.money >= 1 ? (BETS.filter(x => x <= S.money).pop() || Math.floor(S.money)) : BETS[0];
   const ladder = Array.from({ length: 10 }, (_, i) => i + 1);
   body.innerHTML = `<div class="casino icehop"><button class="back" id="ihBack">← All games</button><h3>🐧 Ice Hop</h3>
     <p>Place a bet, then hop your penguin across the ice floes. Each floe pays a bigger multiplier, but every hop is a gamble: the ice might crack, and then it's a cold swim and the house keeps your bet. <b>Cash out</b> whenever you like, at the multiplier you're standing on.</p>
     <div class="ih-modes">${Object.entries(MODES).map(([k, m]) => `<button data-mode="${k}" class="${k === mode ? 'on' : ''}">${m.name}<span>${m.odds} floes break · up to ${fmtM(multAt(k, m.steps))}</span></button>`).join('')}</div>
-    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}</div>
+    <div class="bets">${BETS.map(x => `<button data-bet="${x}" class="${x === chosenBet ? 'on' : ''}" ${x > S.money ? 'disabled' : ''}>$${x}</button>`).join('')}${customBetBox(chosenBet, BETS)}</div>
     <div class="ladder">${ladder.map(n => `<div class="rung">Floe ${n}<b>${fmtM(multAt(mode, n))}</b>${usd(chosenBet * multAt(mode, n))}</div>`).join('')}</div>
     <p style="font-size:12px">Chance of making it to floe 5 on ${MODES[mode].name}: ${Math.round(Math.pow(MODES[mode].p, 5) * 100)}% · floe 10: ${Math.round(Math.pow(MODES[mode].p, 10) * 100)}%. Every cash-out spot has the same 3% house edge.</p>
     <button class="wbtn gold" id="ihGo" ${S.money < chosenBet ? 'disabled' : ''} style="font-size:16px;padding:12px 20px">Bet ${usd(chosenBet)} and hop</button>
-    ${!N && S.money < BETS[0] ? `<p class="neg">Out of chips! <button class="wbtn" id="ihRefill">Free refill to ${usd(START_CHIPS)}</button></p>` : ''}
+
     <p style="font-size:12px;margin-top:12px">Runs <b>${st.runs}</b> · Furthest <b>${st.best} floe${st.best === 1 ? '' : 's'}</b> · Best cash-out <b>${fmtM(st.bestMult)}</b> · Wagered <b>${usd(st.wagered)}</b> · Won <b>${usd(st.won)}</b></p></div>`;
   body.querySelectorAll('[data-bet]').forEach(x => x.onclick = () => { chosenBet = +x.dataset.bet; renderBetScreen(); });
   body.querySelectorAll('[data-mode]').forEach(x => x.onclick = () => { mode = x.dataset.mode; renderBetScreen(); });
   if (host.lobby) body.querySelector('#ihBack').onclick = host.lobby; else body.querySelector('#ihBack').remove();
-  const rf = body.querySelector('#ihRefill'); if (rf) rf.onclick = () => { host.refill(); host.toast(`Topped up to ${usd(START_CHIPS)} in play chips.`, 'good'); renderBetScreen(); };
+  wireCustomBet(body, host.money, v => { chosenBet = v; renderBetScreen(); });
   body.querySelector('#ihGo').onclick = () => startRun(chosenBet);
 }
+// stand-alone only: out of chips = game over, and a fresh wallet
+function renderGameOver() {
+  const st = stats();
+  body.innerHTML = `<div class="casino" style="text-align:center;padding-top:40px"><div style="font-size:64px">🐧💦</div><h3 style="font-size:34px;margin:10px 0 4px">Game over</h3>
+    <p>You're out of chips. Every penguin swims eventually.</p>
+    <p style="font-size:13px">This wallet: <b>${st.runs}</b> runs · furthest <b>${st.best} floe${st.best === 1 ? '' : 's'}</b> · best cash-out <b>${fmtM(st.bestMult)}</b></p>
+    <button class="wbtn gold" id="ihNewGame" style="font-size:17px;padding:12px 24px;margin-top:8px">Start a new game with ${usd(START_CHIPS)}</button></div>`;
+  body.querySelector('#ihNewGame').onclick = newGame;
+}
+function newGame() {
+  host.newGame(); const S = host.store(); S.iceStats = null; host.save();
+  run = null; chosenBet = BETS[0]; host.toast(`New game! ${usd(START_CHIPS)} in your wallet.`, 'good'); renderBetScreen();
+}
 function startRun(bet) {
-  if (host.money() < bet) return;
+  if (host.money() < bet || !(bet >= 1 && bet <= MAX_BET)) return;
   host.add(-bet, `Ice Hop bet (${MODES[mode].name})`);
   const st = stats(); st.runs++; st.wagered += bet; host.save();
   run = { bet, mode, step: 0, phase: 'ready', t: 0, cam: 0, parts: [], coins: [], hop: null, sinkT: 0, shake: 0 };
@@ -159,6 +192,9 @@ function updateButtons(force) {
     el.innerHTML = `<button class="wbtn hop" id="ihHop" ${busy ? 'disabled' : ''}>🐧 Hop → ${fmtM(next)}</button>
       <button class="wbtn gold cash" id="ihCash" ${busy || !run.step ? 'disabled' : ''}>${run.step ? `Cash out ${usd(run.bet * cur())}` : 'Cash out'}</button>`;
     el.querySelector('#ihHop').onclick = hop; el.querySelector('#ihCash').onclick = cashOut;
+  } else if (run.phase === 'lost' && run.gameOver) {
+    el.innerHTML = `<button class="wbtn gold" id="ihNewGame">Start a new game with ${usd(START_CHIPS)}</button>`;
+    el.querySelector('#ihNewGame').onclick = newGame;
   } else if (run.phase === 'lost' || run.phase === 'cashed') {
     el.innerHTML = `<button class="wbtn gold" id="ihAgain">Play again (${usd(run.bet)})</button><button class="wbtn" id="ihBets">Change bet</button>`;
     el.querySelector('#ihAgain').onclick = () => { const b = run.bet, m = run.mode; run = null; mode = m; if (host.money() >= b) startRun(b); else renderBetScreen(); };
@@ -203,7 +239,7 @@ function cashOut(auto) {
 function lose() {
   const st = stats(); st.best = Math.max(st.best, run.step - 1);
   host.passTime(5 + run.step * 2); host.save();
-  run.phase = 'lost'; run.t = 0; updateInfo(); updateButtons();
+  run.phase = 'lost'; run.t = 0; run.gameOver = !N && host.money() < 1; updateInfo(); updateButtons();
 }
 function leave() {
   if (!run) return renderBetScreen();
@@ -384,9 +420,9 @@ function drawHUD() {
     g.fillStyle = `rgba(8,20,40,${0.6 * k})`; g.fillRect(0, 170, W, 120);
     g.globalAlpha = k; g.textAlign = 'center';
     g.fillStyle = r.phase === 'cashed' ? '#6fe39a' : '#ff8a7a'; g.font = '950 42px system-ui';
-    g.fillText(r.phase === 'cashed' ? `CASHED OUT ${usd(r.won)}` : 'SPLASH!', W / 2, 224);
+    g.fillText(r.phase === 'cashed' ? `CASHED OUT ${usd(r.won)}` : r.gameOver ? 'GAME OVER' : 'SPLASH!', W / 2, 224);
     g.fillStyle = '#fff'; g.font = '700 17px system-ui';
-    g.fillText(r.phase === 'cashed' ? `${fmtM(m)} on floe ${r.step} · profit ${usd(r.won - r.bet)}` : `The ice gave way on floe ${r.step}. The house keeps your ${usd(r.bet)}.`, W / 2, 258);
+    g.fillText(r.phase === 'cashed' ? `${fmtM(m)} on floe ${r.step} · profit ${usd(r.won - r.bet)}` : r.gameOver ? `The ice gave way and took your last chips. Start a new game with ${usd(START_CHIPS)}.` : `The ice gave way on floe ${r.step}. The house keeps your ${usd(r.bet)}.`, W / 2, 258);
     g.globalAlpha = 1;
   }
 }

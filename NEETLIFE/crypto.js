@@ -202,6 +202,8 @@ function fq(q) { // quantity
 const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(2) + '%';
 const holding = sym => C().hold[sym] || { q: 0, cost: 0 };
 function addHold(sym, q, cost) { const c = C(), h = c.hold[sym] || (c.hold[sym] = { q: 0, cost: 0 }); h.q += q; h.cost += cost; }
+// for mining.js: read prices, and pay mined coins into the wallet (cost basis = what they were worth when mined)
+N.cryptoApi = { coins: COINS, price: sym => N.S && N.S.crypto ? N.S.crypto.p[sym] : (BY[sym] || {}).seed, credit(sym, q) { if (q > 0 && N.S && N.S.crypto) addHold(sym, q, q * N.S.crypto.p[sym]); } };
 function takeHold(sym, q) { // returns cost basis removed
   const c = C(), h = c.hold[sym]; if (!h) return 0;
   const frac = Math.min(1, q / h.q), cost = h.cost * frac;

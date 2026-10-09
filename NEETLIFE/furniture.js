@@ -622,6 +622,7 @@ N.hooks.interact.push(id => {
   else if (act === 'flamp') { f.floorOn = !f.floorOn; rebuild(); N.save(); thud(600); }
   else if (act === 'lava') { f.lavaOn = !f.lavaOn; N.save(); thud(600); }
   else if (act === 'feed') { if (p.fed === dayNow()) N.toast("They've eaten today. Overfeeding is how you lose fish."); else { p.fed = dayNow(); N.save(); N.toast('The fish do a happy little lap.', 'good'); } }
+  else if (DEFS[p.type].use) DEFS[p.type].use(p, act); // pieces added by other modules (mining rigs)
   else if (act === 'arcade') {
     const score = Math.round((2000 + Math.random() * Math.random() * 98000) / 10) * 10, best = f.arcadeBest || 0;
     f.arcadeBest = Math.max(best, score);
@@ -668,7 +669,7 @@ function render(body) {
   } else {
     html += `<p class="fu-note">Tip: in your room, look at any piece and press <b>F</b> to move it. <b>R</b> rotates, <b>E</b> or click places it.</p>`;
     html += `<div class="fu-h4">Storage</div>` + (f.store.length ? `<div class="fu-list">${f.store.map(p => { const d = DEFS[p.type], v = sellValue(p.type);
-      return `<div class="fu-item"><span class="ic">${d.icon}</span><span class="nm">${d.name}</span><button class="wbtn gold" data-place="${p.uid}">Place</button><button class="wbtn" data-sell="${p.uid}">${v ? 'Sell $' + v : 'Throw out'}</button></div>`; }).join('')}</div>`
+      return `<div class="fu-item"><span class="ic">${d.icon}</span><span class="nm">${p.label || d.name}</span><button class="wbtn gold" data-place="${p.uid}">Place</button>${d.noSell ? `<span class="fu-note" style="margin:0">${d.noSell}</span>` : `<button class="wbtn" data-sell="${p.uid}">${v ? 'Sell $' + v : 'Throw out'}</button>`}</div>`; }).join('')}</div>`
       : '<p class="fu-note">Nothing in storage.</p>');
     html += `<div class="fu-h4">In your apartment</div><div class="fu-list">${f.pieces.map(p => { const d = DEFS[p.type];
       return `<div class="fu-item"><span class="ic">${d.icon}</span><span class="nm">${d.name}</span><button class="wbtn" data-move="${p.uid}">Move</button>${d.essential ? '' : `<button class="wbtn" data-stash="${p.uid}">Store</button>`}</div>`; }).join('')}</div>`;
@@ -711,6 +712,12 @@ N.hooks.beforeSave.push(S => {
 });
 if (N.S) ensure(N.S);
 
-N.furn = { DEFS, F, xfPt, xfBox, rect, isMoving, anyTvOn, get sitting() { return sitting; }, get moving() { return moving; }, thud, pass, pick };
+N.furn = { DEFS, F, xfPt, xfBox, rect, isMoving, anyTvOn, get sitting() { return sitting; }, get moving() { return moving; }, thud, pass, pick, rebuild,
+  // new piece straight into your hands to place (mining rigs, etc.)
+  place(type, extra) { const f = F(), p = Object.assign({ uid: f.next++, type, x: 0, z: 0, r: 0 }, extra || {}); f.store.push(p); N.save(); N.closePC(); startMove(p, 'store'); return p; },
+  // pick up an existing piece to put it somewhere (from storage or the room)
+  move(p) { N.closePC(); startMove(p, F().store.includes(p) ? 'store' : 'room'); },
+  // take a piece out of the game entirely (from the room or storage)
+  remove(p) { const f = F(); if (moving && moving.p === p) cancelMove(true); for (const arr of [f.pieces, f.store]) { const i = arr.indexOf(p); if (i >= 0) arr.splice(i, 1); } for (const q of f.pieces) if (q.on === p.uid) { q.on = null; q.y = 0; } rebuild(); N.save(); } };
 window.__furn = { DEFS, ART, get F() { return F(); }, get moving() { return moving; }, get sitting() { return sitting; }, startMove, placeMove, cancelMove, storeMove, rebuild, why, aimedPiece, buy, render };
 })();
