@@ -1,3 +1,4 @@
+// Updated 2026-10-09: Cannon Crash release.
 // Pogey Life — Cannon Crash: a PogeyCasino game. A cannon on the left, structures of wood, glass, stone and TNT on the
 // right. Click and drag to aim (angle + power, with a short arc preview), then Fire. Blocks break when they take enough
 // damage, or when they get knocked down onto the ground. Do enough damage before you run out of cannonballs to clear

@@ -1,3 +1,4 @@
+// Updated 2026-10-09: Cannon Crash release.
 // Pogey Life — a small 2D rigid-body physics engine (used by Cannon Crash).
 // Convex polygons and circles; SAT + edge clipping for contacts; sequential impulses with warm starting
 // (the Box2D-lite approach), restitution, friction, sleeping, and impact events for damage.
