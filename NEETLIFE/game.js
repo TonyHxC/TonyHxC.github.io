@@ -105,7 +105,7 @@ const BATH = { x0: 2.0, x1: 4.3, z0: 4.12, z1: 6.0 };
 // The game used to be called NEETLIFE: carry old saves, settings, templates etc. over to the new names (once; old keys are left alone)
 try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('neetlife_')) { const nk = 'pogey' + k.slice(4); if (localStorage.getItem(nk) === null) localStorage.setItem(nk, localStorage.getItem(k)); } } } catch (e) {}
 const SETTINGS_KEY = 'pogeylife_settings_v1';
-const settings = Object.assign({ mirror: 'full', pcSize: 75 }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
+const settings = Object.assign({ mirror: 'full', pcSize: 75, sens: 1 }, (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } })());
 const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} };
 const BATH_G = { pos: [], nor: [], col: [], glow: [] }, DOORFILL_G = { pos: [], nor: [], col: [], glow: [] };   // bathroom geometry lives in its own mesh so "partial" mirrors can reflect just it
 // full-length mirror on the bathroom's west wall (glass faces +x)
@@ -614,7 +614,8 @@ let dragMoved = 0;
 document.addEventListener('mousemove', e => {
   if (!locked && !(dragging && active())) return;
   if (!locked) dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
-  const k = locked ? 0.0022 : 0.005;
+  let k = locked ? 0.0022 : 0.005;
+  k *= Math.max(0.1, Math.min(4, +settings.sens || 1)); // Settings > Mouse sensitivity
   P.yaw -= e.movementX * k; P.pitch -= e.movementY * k;
   P.pitch = Math.max(-1.45, Math.min(1.45, P.pitch));
 });
@@ -1124,7 +1125,14 @@ function renderSettings() {
   settingsEl.innerHTML = `<div class="card" style="text-align:left;max-width:520px">
     <h2 style="margin:0 0 4px;text-align:center">Settings</h2>
     <p style="text-align:center;margin-top:0">Saved in this browser.</p>
-    <b style="display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">Mirror reflections</b>
+    <b style="display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:16px 0 8px">Mouse sensitivity</b>
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px">
+      <span style="font-size:12px;color:var(--muted)">Slow</span>
+      <input type="range" id="setSens" min="0.2" max="3" step="0.05" value="${settings.sens}" style="flex:1;accent-color:#ffcf5a">
+      <span style="font-size:12px;color:var(--muted)">Fast</span>
+      <b id="setSensVal" style="min-width:44px;text-align:right;font-variant-numeric:tabular-nums">${(+settings.sens).toFixed(2)}×</b>
+      <button class="btn ghost" id="setSensReset" style="margin:0;padding:6px 10px;font-size:12px;box-shadow:none" title="Back to default">Reset</button></div>
+    <b style="display:block;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:18px 0 8px">Mirror reflections</b>
     ${MIRROR_OPTS.map(([v, l, d]) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;cursor:pointer;margin-bottom:6px;
         background:${settings.mirror === v ? 'var(--panel2)' : 'transparent'};border:1px solid ${settings.mirror === v ? 'var(--accent)' : 'var(--line)'}">
         <input type="radio" name="mirrorOpt" value="${v}" ${settings.mirror === v ? 'checked' : ''} style="margin-top:3px;accent-color:#ffcf5a">
@@ -1138,6 +1146,10 @@ function renderSettings() {
   settingsEl.querySelectorAll('input[name=mirrorOpt]').forEach(r => r.onchange = () => { settings.mirror = r.value; saveSettings(); renderSettings(); });
   $('setPcSize').oninput = e => { pcSizer.set(+e.target.value); $('setPcSizeVal').textContent = settings.pcSize + '%'; };
   $('setPcSize').onchange = () => saveSettings();
+  const sens = v => { settings.sens = Math.round(v * 100) / 100; $('setSens').value = settings.sens; $('setSensVal').textContent = settings.sens.toFixed(2) + '×'; };
+  $('setSens').oninput = e => sens(+e.target.value);
+  $('setSens').onchange = () => saveSettings();
+  $('setSensReset').onclick = () => { sens(1); saveSettings(); };
   $('btnSettingsBack').onclick = () => showScreen(settingsBack);
 }
 // PC monitor size = settings.pcSize % of the window. Below ~960x600 the whole screen is zoomed down instead of

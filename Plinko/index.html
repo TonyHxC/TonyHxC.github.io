@@ -281,15 +281,16 @@
     <div class="overlay" id="ovReward"><div class="box">
       <h2 id="rewardTitle">Floor cleared!</h2>
       <p id="rewardInfo"></p>
+      <!-- Pogey Life only: cash out sits above the upgrades so it's never scrolled out of view -->
+      <div id="pogeyCashRow" style="display:none;margin:4px 0 14px;padding:10px 12px;border:1px solid #ffd16655;border-radius:12px;background:#ffd16614">
+        <button class="btn" id="btnCashOut" style="background:var(--gold);box-shadow:0 4px 0 #b8902f;margin:0">Cash out</button>
+        <p class="board-note" id="pogeyCashNote" style="margin:8px 0 0"></p>
+      </div>
       <div class="cards" id="cards"></div>
       <div>
         <button class="btn secondary" id="btnReroll">Reroll</button>
         <button class="btn secondary" id="btnBuyBall">+1 ball next floor</button>
         <button class="btn secondary" id="btnSkip">Skip (+4 ●)</button>
-      </div>
-      <div id="pogeyCashRow" style="display:none;margin-top:10px">
-        <button class="btn" id="btnCashOut" style="background:var(--gold);box-shadow:0 4px 0 #b8902f">Cash out</button>
-        <p class="board-note" id="pogeyCashNote" style="margin-top:6px"></p>
       </div>
     </div></div>
 
@@ -1041,7 +1042,7 @@ function floorCleared() {
     const cleared = run.floor, now = pogeyCashFor(cleared), next = pogeyCashFor(cleared + 1);
     $('pogeyCashRow').style.display = '';
     $('btnCashOut').textContent = `Cash out $${now.toLocaleString()}`;
-    $('pogeyCashNote').textContent = `Or pick an upgrade and push on: clear floor ${cleared + 1} for $${next.toLocaleString()}. Bust and you lose your $${pogey.bet} bet.`;
+    $('pogeyCashNote').textContent = `Or pick an upgrade below and push on: clear floor ${cleared + 1} for $${next.toLocaleString()}. Bust and you lose your $${pogey.bet} bet.`;
   }
   showOverlay('ovReward');
   updateHUD();
