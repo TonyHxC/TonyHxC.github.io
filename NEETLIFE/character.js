@@ -436,6 +436,7 @@ function recordDraw(ch, x, z, yaw) {
 }
 N.hooks.drawSelf.push(() => {
   const S = N.S; if (!S || !S.char) return;
+  if (N.titleMode) { const t = N.titlePose && N.titlePose(); N.env.selfVisible = !!t; if (t) drawCharacter(S.char, t.x, t.z, t.yaw, 0, {}); return; } // title screen: standing on the rug
   N.env.selfVisible = mode === 'creator' || third() || (mode === 'mirror' && N.settings.mirror === 'simple');
   if (mode === 'creator') return recordDraw(draft, STAGE.x, STAGE.z, stageYaw);
   if (mode === 'mirror') return recordDraw(draft, N.MIRROR.stand.x, N.MIRROR.stand.z, stageYaw);

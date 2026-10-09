@@ -1073,13 +1073,13 @@ const DISCORD_SVG = '<svg class="ico" viewBox="0 0 24 24" fill="currentColor"><p
 // A computer keeps up to MAX_LOCAL characters; making or loading one more asks which to replace.
 const MAX_LOCAL = 3;
 let pendingReplace = null, codeMsg = '', armed = null; // armed = the row that needs a second click to confirm
-const PARENT = { start: 'main', select: 'start', code: 'start', replace: 'start' };
+const PARENT = { start: 'main', chars: 'main', replace: 'start' };
 function charLine(p) { return `${p.evicted ? 'Evicted' : 'Day ' + p.day + ' · ' + money(p.money)}${p.at ? ' · ' + new Date(p.at).toLocaleDateString() : ''}`; }
 function deleteLocal(code) {
   try { localStorage.removeItem(SLOT_PREFIX + code); } catch (e) {}
   if (lsGet(ACTIVE_KEY) === code) { const rest = localProfiles(); if (rest[0]) lsSet(ACTIVE_KEY, rest[0].code); else try { localStorage.removeItem(ACTIVE_KEY); } catch (e) {} }
 }
-function pickChar(code, note) { lsSet(ACTIVE_KEY, code); titleScene(); renderTitle('start'); if (note) toast(note, 'good', 3500); }
+function pickChar(code, note, view = 'chars') { lsSet(ACTIVE_KEY, code); titleScene(); renderTitle(view); if (note) toast(note, 'good', 3500); }
 // New life, unless the computer is full: then choose who to replace first
 function startNewLife() {
   if (localProfiles().length >= MAX_LOCAL) { pendingReplace = { kind: 'new' }; renderTitle('replace'); }
@@ -1089,73 +1089,70 @@ function renderTitle(view) {
   if (view) { titleView = view; armed = null; }
   const saved = load(), has = saved && !saved.evicted, chars = localProfiles();
   const box = $('titleBtns'); box.innerHTML = '';
+  $('scTitle').classList.toggle('chars', titleView === 'chars' || (titleView === 'replace' && !!pendingReplace && pendingReplace.kind === 'code'));
   const mk = (html, fn, cls = '') => { const b = document.createElement('button'); b.className = cls; b.innerHTML = `<span class="ar">▸</span>${html}`; if (fn) b.onclick = fn; else b.disabled = true; box.appendChild(b); return b; };
   const note = html => { const d = document.createElement('div'); d.className = 'tnote'; d.innerHTML = html; box.appendChild(d); };
-  // a list of characters as menu rows (select / replace)
+  // characters on this computer as rows: click to pick, ✕ to delete (opts.confirm: picking needs a second click)
   const charRows = (onPick, opts = {}) => {
-    const act = lsGet(ACTIVE_KEY);
+    const act = lsGet(ACTIVE_KEY), list = document.createElement('div'); list.className = 'tclist';
     for (const p of chars) {
-      const row = document.createElement('div'); row.className = 'tchar';
-      const isArmed = armed && armed.code === p.code;
-      const main = mk(isArmed && armed.what === 'pick' ? `<span class="tc-code">${opts.confirmText || 'Click again'}</span><span class="sub">${p.code}</span>`
-        : `<span class="tc-code">${p.code}</span><span class="sub">${charLine(p)}${p.code === act ? ' · selected' : ''}</span>`,
-        () => { if (opts.confirm && !(isArmed && armed.what === 'pick')) { armed = { code: p.code, what: 'pick' }; renderTitle(); focusRow(p.code); return; } onPick(p); }, isArmed && armed.what === 'pick' ? 'warn' : '');
-      main.dataset.code = p.code;
-      row.appendChild(main);
-      if (opts.del) {
-        const del = document.createElement('button'); del.className = 'tc-del' + (isArmed && armed.what === 'del' ? ' armed' : ''); del.title = 'Delete from this computer';
-        del.textContent = isArmed && armed.what === 'del' ? 'Delete?' : '✕';
-        del.onclick = () => {
-          if (!(isArmed && armed.what === 'del')) { armed = { code: p.code, what: 'del' }; renderTitle(); return; }
-          deleteLocal(p.code); armed = null;
-          toast(cloud.ready ? `Deleted ${p.code} from this computer. It's still saved online: enter the code to bring it back.` : `Deleted ${p.code}.`, '', 4500);
-          titleScene(); renderTitle(localProfiles().length ? 'select' : 'start');
-        };
-        row.appendChild(del);
-      }
-      box.appendChild(row);
+      const isArmed = armed && armed.code === p.code, row = document.createElement('div');
+      row.className = 'tcrow' + (p.code === act && !opts.confirm ? ' sel' : '') + (isArmed && armed.what === 'pick' ? ' armed' : '');
+      row.innerHTML = `<button class="tcpick" data-code="${p.code}"><b>${isArmed && armed.what === 'pick' ? (opts.confirmText || 'Click again') : p.code}</b><span>${charLine(p)}</span></button>` +
+        (opts.del ? `<button class="tc-del${isArmed && armed.what === 'del' ? ' armed' : ''}" title="Delete from this computer">${isArmed && armed.what === 'del' ? 'Delete?' : '✕'}</button>` : '');
+      row.querySelector('.tcpick').onclick = () => { if (opts.confirm && !(isArmed && armed.what === 'pick')) { armed = { code: p.code, what: 'pick' }; renderTitle(); focusRow(p.code); return; } onPick(p); };
+      const del = row.querySelector('.tc-del');
+      if (del) del.onclick = () => {
+        if (!(isArmed && armed.what === 'del')) { armed = { code: p.code, what: 'del' }; renderTitle(); return; }
+        deleteLocal(p.code); armed = null;
+        toast(cloud.ready ? `Deleted ${p.code} from this computer. It's still saved online: enter the code to bring it back.` : `Deleted ${p.code}.`, '', 4500);
+        titleScene(); renderTitle();
+      };
+      list.appendChild(row);
     }
+    box.appendChild(list);
   };
   if (titleView === 'main') {
     mk('Start game', () => renderTitle('start'));
+    mk('Character', () => renderTitle('chars'));
     mk('Settings', () => openSettings('scTitle'));
     mk(`${DISCORD_SVG}Discord`, () => { if (DISCORD_URL) window.open(DISCORD_URL, '_blank', 'noopener'); else toast('The Pogey Life Discord is coming soon.', '', 3000); });
   } else if (titleView === 'start') {
     if (has) mk(`Continue <span class="sub">${saved.code || ''} · Day ${dayOf(saved.t)} · ${money(saved.money)}</span>`, () => continueGame(saved));
     else mk(`Continue <span class="sub">${saved && saved.evicted ? 'this character was evicted' : 'no save yet'}</span>`, null);
     mk('New life', startNewLife);
-    if (chars.length) mk(`Select character <span class="sub">${chars.length} of ${MAX_LOCAL} on this computer</span>`, () => renderTitle('select'));
-    mk('Enter code', () => renderTitle('code'));
     mk('← Back', () => renderTitle('main'), 'back');
-  } else if (titleView === 'select') {
-    note(`Choose who to play as. You can keep ${MAX_LOCAL} characters on this computer.`);
-    charRows(p => pickChar(p.code, `Selected ${p.code}.`), { del: true });
-    mk('← Back', () => renderTitle('start'), 'back');
+  } else if (titleView === 'chars') {
+    renderCodeForm(box);
+    const lbl = document.createElement('div'); lbl.className = 'tcode-lbl'; lbl.style.marginTop = '22px';
+    lbl.textContent = `Your characters · ${chars.length} of ${MAX_LOCAL} on this computer`; box.appendChild(lbl);
+    if (chars.length) charRows(p => pickChar(p.code), { del: true });
+    else note('No characters yet. Start a <b>New life</b> from Start game, or enter a player code above.');
+    mk('← Back', () => renderTitle('main'), 'back');
   } else if (titleView === 'replace') {
     const pr = pendingReplace || { kind: 'new' };
     note(`<b>This computer already has ${MAX_LOCAL} characters.</b> ${pr.kind === 'new' ? 'Starting a new life' : `Loading ${pr.code}`} will replace one of them. Pick which one:`);
     charRows(p => {
       deleteLocal(p.code); pendingReplace = null;
       if (pr.kind === 'new') newLife();
-      else { lsSet(SLOT_PREFIX + pr.code, JSON.stringify(pr.data)); pickChar(pr.code, `Replaced ${p.code} with ${pr.code}.`); }
+      else { lsSet(SLOT_PREFIX + pr.code, JSON.stringify(pr.data)); pickChar(pr.code, `Replaced ${p.code} with ${pr.code}.`, 'chars'); }
     }, { confirm: true, confirmText: 'Replace this one? Click again' });
     note(cloud.ready ? 'The replaced character stays saved online, so its code can still bring it back later.' : 'The replaced character is deleted from this computer.');
-    mk('← Cancel', () => { pendingReplace = null; renderTitle('start'); }, 'back');
-  } else if (titleView === 'code') {
-    renderCodeScreen(box, mk);
+    mk('← Cancel', () => { const back = pr.kind === 'code' ? 'chars' : 'start'; pendingReplace = null; renderTitle(back); }, 'back');
   }
+  renderCharCard();
 }
 function focusRow(code) { const b = $('titleBtns').querySelector(`[data-code="${code}"]`); if (b) b.focus({ preventScroll: true }); }
-// Enter code: load a character by its player code (from this computer, or the online saves)
-function renderCodeScreen(box, mk) {
+// the player code box at the top of the Character screen
+function renderCodeForm(box) {
   const form = document.createElement('div'); form.className = 'tcode';
-  form.innerHTML = `<div class="tcode-lbl">Player code</div>
+  form.innerHTML = `<div class="tcode-lbl">Enter a player code</div>
     <div class="tcode-row"><input id="codeIn" maxlength="16" placeholder="XXXX-XXXX-XXXX" spellcheck="false" autocomplete="off"><button id="codeGo">Load</button></div>
     <div class="tcode-msg" id="codeMsg">${codeMsg}</div>`;
   box.appendChild(form); codeMsg = '';
   const inp = form.querySelector('#codeIn'), msg = form.querySelector('#codeMsg');
   inp.oninput = () => { const x = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 12); inp.value = x.replace(/(.{4})(?=.)/g, '$1-'); };
-  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') renderTitle('start'); };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') go(); if (e.key === 'Escape') inp.blur(); };
   async function go() {
     const code = normCode(inp.value);
     if (!code) { msg.className = 'tcode-msg bad'; msg.textContent = 'Codes are 12 letters and numbers, like K7QM-3XRP-9FHT.'; return; }
@@ -1172,8 +1169,38 @@ function renderCodeScreen(box, mk) {
     msg.textContent = online === null ? 'No character found with that code.' : cloud.ready === false ? "That code isn't on this computer, and online saving isn't switched on yet." : "Couldn't reach the online saves. Check your connection and try again.";
   }
   form.querySelector('#codeGo').onclick = go;
-  mk('← Back', () => renderTitle('start'), 'back');
-  setTimeout(() => inp.focus(), 30);
+}
+// the stats card under the character on the Character screen (positioned every frame in placeCharCard)
+function renderCharCard() {
+  const card = $('charCard'), saved = load();
+  const show = titleView === 'chars' && saved && saved.char;
+  card.classList.toggle('show', !!show);
+  if (!show) return;
+  const st = saved.stats || {}, d = dayOf(saved.t), rent = (saved.bills || []).find(b => b.id === 'rent'), furn = saved.furn ? saved.furn.pieces.length : 0;
+  const row = (k, v) => `<div class="cc-stat"><span>${k}</span><b>${v}</b></div>`;
+  card.innerHTML = `<div class="cc-head"><div><div class="cc-code">${saved.code}</div>
+      <div class="cc-day">${saved.evicted ? '<span class="cc-ev">Evicted</span>' : `${DAYS[(d - 1) % 7]} · Day ${d}`}${saved.savedAt ? ' · played ' + new Date(saved.savedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}</div></div>
+      <div class="cc-money ${saved.money < 0 ? 'neg' : ''}">${money(saved.money)}</div></div>
+    <div class="cc-grid">
+      ${row('Days survived', d)}
+      ${row('Plinko', `${st.runs || 0} runs · ${st.wins || 0} won`)}
+      ${row('Biggest win', money(st.best || 0))}
+      ${row('Furniture', `${furn} piece${furn === 1 ? '' : 's'}`)}
+      ${rent && !saved.evicted ? row('Rent', rent.paid ? 'paid' : `${money(billCost(rent))} ${dueLabelFor(rent.due, saved.t)}`) : ''}
+    </div>
+    ${saved.evicted ? '' : '<button class="cc-play" id="ccPlay">Play</button>'}`;
+  const play = $('ccPlay'); if (play) play.onclick = () => continueGame(saved);
+}
+function dueLabelFor(due, t) { const d = due - dayOf(t); return d < 0 ? 'overdue' : d === 0 ? 'due today' : d === 1 ? 'due tomorrow' : `due in ${d} days`; }
+function placeCharCard() {
+  const card = $('charCard'), c = titleCam.base; if (!card.classList.contains('show') || !c) return;
+  const s = TITLE_STAND, gl = canvas, vp = M4.mul(M4.persp(1.2, gl.width / gl.height, 0.03, 50), M4.view(c.x, c.y, c.z, c.yaw, c.pitch));
+  const pr = (x, y, z) => { const cx = vp[0] * x + vp[4] * y + vp[8] * z + vp[12], cy = vp[1] * x + vp[5] * y + vp[9] * z + vp[13], cw = vp[3] * x + vp[7] * y + vp[11] * z + vp[15];
+    return cw > 0.05 ? [(cx / cw + 1) / 2 * gl.clientWidth, (1 - cy / cw) / 2 * gl.clientHeight] : null; };
+  const feet = pr(s.x, 0, s.z); if (!feet) return;
+  const w = card.offsetWidth, h = card.offsetHeight;
+  card.style.left = Math.round(Math.max(12, Math.min(innerWidth - w - 12, feet[0] - w / 2))) + 'px';
+  card.style.top = Math.round(Math.max(12, Math.min(innerHeight - h - 12, feet[1] + 6))) + 'px';
 }
 // arrow keys / Enter / Esc on the title menu (nothing is highlighted until you use the keys or the mouse)
 document.addEventListener('keydown', e => {
@@ -1186,24 +1213,40 @@ document.addEventListener('keydown', e => {
 document.addEventListener('focusin', e => { for (const b of $('titleBtns').querySelectorAll('button')) b.classList.toggle('on', b === e.target && b.matches(':focus-visible')); });
 document.addEventListener('focusout', e => { if (e.target.classList) e.target.classList.remove('on'); });
 // the title background: your own apartment if there's a save (a throwaway copy; nothing here is saved), in the evening
+let titleChar = false; // is there a saved character to stand on the rug?
 function titleScene() {
   const saved = load();
-  S = saved && !saved.evicted ? JSON.parse(JSON.stringify(saved)) : freshState();
+  S = saved ? JSON.parse(JSON.stringify(saved)) : freshState();
+  titleChar = !!(saved && saved.char);
   for (const fn of hooks.fresh) fn(S);
   Object.assign(S, { t: (dayOf(S.t) - 1) * 1440 + TITLE_SHOT.hour * 60, lightOn: TITLE_SHOT.light, lampOn: true, bathLight: true, bathDoor: true });
 }
 const TITLE_SHOT = { x: 0.35, z: 3.75, yaw: -0.5, pitch: -0.08, y: 1.55, hour: 19.4, light: true }; // corner by the door, looking at the desk + dusk window
+// the Character screen glides in closer, with the character on the left half of the screen
+const CHAR_SHOT = { x: 3.0, z: 3.92, yaw: 0.15, pitch: -0.16, y: 1.2 };
+const TITLE_STAND = { x: 2.35, z: 1.62 }; // on the rug
+let camMix = 0, camT = 0;
 function titleCam() {
-  const k = performance.now() / 1000, c = TITLE_SHOT;
-  return { x: c.x + Math.sin(k * 0.05) * 0.08, y: c.y + Math.sin(k * 0.13) * 0.015, z: c.z + Math.cos(k * 0.05) * 0.06,
-    yaw: c.yaw + Math.sin(k * 0.06) * 0.09, pitch: c.pitch + Math.sin(k * 0.09) * 0.02 };
+  const now = performance.now(), k = now / 1000, dt = Math.min(0.1, (now - (camT || now)) / 1000); camT = now;
+  const want = titleView === 'chars' || (titleView === 'replace' && pendingReplace && pendingReplace.kind === 'code') ? 1 : 0;
+  camMix += (want - camMix) * (1 - Math.exp(-dt * 3.5));
+  const e = camMix * camMix * (3 - 2 * camMix), a = TITLE_SHOT, b = CHAR_SHOT, mix = (u, v) => u + (v - u) * e;
+  titleCam.base = { x: mix(a.x, b.x), y: mix(a.y, b.y), z: mix(a.z, b.z), yaw: mix(a.yaw, b.yaw), pitch: mix(a.pitch, b.pitch) }; // without the drift: the stats card hangs off this so it doesn't wobble
+  return { x: mix(a.x, b.x) + Math.sin(k * 0.05) * 0.08, y: mix(a.y, b.y) + Math.sin(k * 0.13) * 0.015, z: mix(a.z, b.z) + Math.cos(k * 0.05) * 0.06,
+    yaw: mix(a.yaw, b.yaw) + Math.sin(k * 0.06) * 0.09 * (1 - e * 0.6), pitch: mix(a.pitch, b.pitch) + Math.sin(k * 0.09) * 0.02 };
+}
+// where the character stands on the title screen, turned to face the camera (character.js draws them)
+function titlePose() {
+  if (!titleMode || !titleChar) return null;
+  const eye = lastView.eye || TITLE_SHOT, s = TITLE_STAND;
+  return { x: s.x, z: s.z, yaw: Math.atan2(-(eye.x - s.x), -(eye.z - s.z)) };
 }
 function titleStamp() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
   $('titleStamp').textContent = `${p(d.getMonth() + 1)} ${p(d.getDate())} '${String(d.getFullYear()).slice(2)}  ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 let titleMode = false;
-function showTitle() { titleMode = true; titleScene(); renderTitle('main'); titleStamp(); showScreen('scTitle'); }
+function showTitle() { titleMode = true; $('toasts').innerHTML = ''; titleScene(); renderTitle('main'); titleStamp(); showScreen('scTitle'); }
 function newLife() {
   titleMode = false; S = freshState(); for (const fn of hooks.fresh) fn(S);
   if (hooks.newLife.length) { showScreen(null); hooks.newLife[0](); } else begin(null); }
@@ -1263,6 +1306,7 @@ function frame(now) {
   if (hovered) { pr.style.display = 'block'; pr.innerHTML = `<kbd>E</kbd>${typeof hovered.prompt === 'function' ? hovered.prompt() : hovered.prompt}`; } else pr.style.display = 'none';
   document.body.classList.toggle('titlemode', titleMode);
   if (titleMode && now - (titleStamp.t || 0) > 15000) { titleStamp.t = now; titleStamp(); }
+  if (titleMode) placeCharCard();
   if (S || !started) render();
   requestAnimationFrame(frame);
 }
@@ -1382,7 +1426,7 @@ window.POGEY = {
   solids, ROOM, withXF, intoGeometry, setFurniture, advance, closePC, openPC, get hovered() { return hovered; }, get locked() { return locked; },
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
-  get view() { return lastView; }, get paused() { return paused || sleeping; }, get titleMode() { return titleMode; }, get pcOpen() { return pcOpen; },
+  get view() { return lastView; }, titlePose, get paused() { return paused || sleeping; }, get titleMode() { return titleMode; }, get pcOpen() { return pcOpen; },
   setBurnerGlow(c) { burnerGlow = c; },
   openModal() { modalOpen = true; document.exitPointerLock && document.exitPointerLock(); },
   closeModal() { modalOpen = false; if (started && !S.evicted) lockPointer(); },

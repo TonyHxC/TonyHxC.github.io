@@ -105,6 +105,34 @@
   .tmenu .tc-del { all: unset; cursor: pointer; font: 800 13px system-ui; color: #ffffff70; padding: 6px 10px; border-radius: 8px; border: 1px solid #ffffff22; white-space: nowrap; }
   .tmenu .tc-del:hover { color: var(--red); border-color: var(--red); }
   .tmenu .tc-del.armed { color: #fff; background: #c43a3a; border-color: #c43a3a; }
+  /* Character screen: code box + list top left, the character standing left of centre with a stats card under them */
+  #scTitle.chars .tlogo, #scTitle.chars .ttag { display: none; }
+  #scTitle.chars .tmain { justify-content: flex-start; padding-top: max(16px, 5vh); width: min(400px, 100%); }
+  #scTitle.chars .tfx.scrim { background: linear-gradient(90deg, #08070fee 0%, #08070fc0 22%, #08070f30 40%, transparent 55%); }
+  #scTitle.chars .tkeys { display: none; }
+  .tclist { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; width: 100%; }
+  .tcrow { display: flex; align-items: stretch; gap: 6px; }
+  .tmenu .tcpick { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 10px 14px; border-radius: 12px; background: #0b0a12b3; border: 1px solid #ffffff1f;
+    font-size: 15px; text-transform: none; letter-spacing: 0; transform: none !important; }
+  .tmenu .tcpick b { font: 800 17px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 2px; color: #fff; }
+  .tmenu .tcpick span { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .tmenu .tcpick:hover, .tmenu .tcpick.on { border-color: #ffffff55; }
+  .tcrow.sel .tcpick { border-color: var(--accent); background: #2a2210cc; } .tcrow.sel .tcpick b { color: var(--accent); }
+  .tcrow.armed .tcpick { border-color: var(--red); } .tcrow.armed .tcpick b { color: var(--red); letter-spacing: 0; font-family: system-ui; }
+  .tmenu .tcrow .tc-del { display: flex; align-items: center; padding: 0 12px; font-size: 13px; }
+  .ccard { position: absolute; display: none; width: 330px; padding: 12px 14px; border-radius: 14px; background: #0d0c14e8; border: 1px solid #ffffff22; box-shadow: 0 16px 40px #000a; backdrop-filter: blur(4px); }
+  .ccard.show { display: block; }
+  .cc-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .cc-code { font: 800 16px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 2px; color: var(--accent); }
+  .cc-day { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .5px; margin-top: 2px; }
+  .cc-money { font-size: 24px; font-weight: 950; color: var(--green); } .cc-money.neg { color: var(--red); }
+  .cc-ev { color: var(--red); }
+  .cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .cc-stat { background: #ffffff0d; border-radius: 8px; padding: 6px 8px; } .cc-stat span { display: block; font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+  .cc-stat b { font-size: 13px; }
+  .cc-play { all: unset; box-sizing: border-box; display: block; width: 100%; text-align: center; cursor: pointer; margin-top: 10px; padding: 9px; border-radius: 10px;
+    background: var(--accent); color: #17130a; font-weight: 900; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
+  .cc-play:hover { background: #ffd97a; }
   #mobileNote { color: var(--red); font-weight: 700; margin-top: 20px; }
   .tkeys { position: absolute; left: max(16px, 7vw); bottom: 22px; font-size: 12px; color: #ffffff80; font-weight: 600; right: 16px; }
   .tkeys b { color: #fff; background: #ffffff1a; border: 1px solid #ffffff26; border-radius: 4px; padding: 1px 6px; margin: 0 4px 0 10px; font-size: 11px; }
@@ -208,6 +236,7 @@
   </div>
   <div class="tkeys"><b>WASD</b> move <b>Mouse</b> look <b>E</b> use <b>F</b> eat <b>Esc</b> menu</div>
   <div class="tstamp" id="titleStamp"></div>
+  <div class="ccard" id="charCard"></div>
 </div>
 
 <!-- Pause -->
