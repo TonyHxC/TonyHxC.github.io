@@ -249,10 +249,7 @@ function buildRoom() {
   thing('fridge', 'Fridge', [kx - 0.06, 0, 2.7, ROOM.w, 1.8, 3.4]);
 
   // ---- living bits ----
-  // poster above bed
-  box(0.0, 1.25, 0.6, 0.02, 0.8, 0.6, '#1d1730');
-  box(0.02, 1.32, 0.66, 0.01, 0.66, 0.48, '#b98cff');
-  box(0.03, 1.5, 0.76, 0.01, 0.3, 0.28, '#7cf5ff');
+  // (the poster above the bed is wall art now: furniture.js)
   // ceiling light
   prism(2.5, ROOM.h - 0.05, 2.0, 0.3, 0.05, '#ddd', 10);
   prism(2.5, ROOM.h - 0.11, 2.0, 0.25, 0.06, '#fff6dc', 10, 3);
@@ -414,6 +411,7 @@ function daylight(h) { // 0 at night, 1 at noon
   return 1;
 }
 
+const lastView = { vp: null, eye: null };
 function render() {
   const h = (S.t / 60) % 24, day = daylight(h), sky = skyAt(h);
   gl.clearColor(0.02, 0.02, 0.04, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -422,6 +420,7 @@ function render() {
   const cam = titleMode ? titleCam() : getCamera();
   const eye = cam || { x: P.x, y: P.y + bob, z: P.z, yaw: P.yaw, pitch: P.pitch };
   const vp = M4.mul(M4.persp(1.2, aspect, 0.03, 50), M4.view(eye.x, eye.y, eye.z, eye.yaw, eye.pitch));
+  lastView.vp = vp; lastView.eye = eye; // tv.js pins the YouTube player onto the TV screen with this
   // weather: clouds grey out and darken the sky; lightning flashes everything
   const cl = env.cloud, fl = env.flash;
   const lum = sky[0] * 0.3 + sky[1] * 0.55 + sky[2] * 0.15;
@@ -1217,6 +1216,7 @@ window.POGEY = {
   solids, ROOM, withXF, intoGeometry, setFurniture, advance, closePC, openPC, get hovered() { return hovered; }, get locked() { return locked; },
   get S() { return S; }, get P() { return P; }, get time() { return S ? S.t : 0; },
   get active() { return active(); },
+  get view() { return lastView; }, get paused() { return paused || sleeping; }, get titleMode() { return titleMode; }, get pcOpen() { return pcOpen; },
   setBurnerGlow(c) { burnerGlow = c; },
   openModal() { modalOpen = true; document.exitPointerLock && document.exitPointerLock(); },
   closeModal() { modalOpen = false; if (started && !S.evicted) lockPointer(); },

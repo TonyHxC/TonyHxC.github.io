@@ -1,7 +1,8 @@
 // Pogey Life — furniture: every movable piece in the apartment, moving it around, and the Nestly furniture store.
 // Each piece is built in local space (origin = min corner of its footprint, w × d, front facing +z) and placed with
 // POGEY.withXF (offset + quarter turns). The whole layout is baked into one mesh (POGEY.setFurniture) and rebuilt
-// whenever something moves. Kitchen, bathroom, poster and lights stay fixed.
+// whenever something moves. Kitchen, bathroom and lights stay fixed. Wall art (wall: true) hangs on the walls and
+// moves the same way: aim at a wall instead of the floor.
 // Must load right after game.js: cooking.js customises the trash bin's prompt, so the bin has to exist first.
 (() => {
 'use strict';
@@ -89,13 +90,14 @@ const DEFS = {
       box(0.15, 0.43, 0.12, 0.25, 0.01, 0.18, '#d94f6a'); prism(0.75, 0.43, 0.3, 0.04, 0.08, '#f2f2f2', 8);
     } },
   tv: { name: 'TV + stand', icon: '📺', price: 600, w: 1.4, d: 0.45, h: 1.25, shop: true,
-    desc: 'A 55" screen and a console you will never finish the backlog on.',
+    desc: 'A 55" screen that plays your YouTube channels. Pick up the remote to change the channel.',
     build() {
       box(0, 0, 0, 1.4, 0.45, 0.45, '#2c2c33'); box(0.15, 0.08, 0.28, 0.35, 0.07, 0.16, '#e8e8e8');
       box(0.6, 0.45, 0.15, 0.2, 0.05, 0.12, '#111'); box(0.12, 0.5, 0.12, 1.16, 0.68, 0.06, '#111');
       box(0.15, 0.53, 0.18, 1.1, 0.62, 0.005, '#ffffff', GLOW.TV);
     },
-    things: p => [[tid(p, 'tv'), () => N.S.furn.tvOn ? 'Turn the TV off' : 'Turn the TV on', [0.1, 0.45, 0.05, 1.3, 1.2, 0.3]]] },
+    things: p => [[tid(p, 'tv'), () => N.tvRemote ? 'Pick up the remote' : N.S.furn.tvOn ? 'Turn the TV off' : 'Turn the TV on', [0.1, 0.45, 0.05, 1.3, 1.2, 0.3]]],
+    screen: [0.15, 0.53, 1.25, 1.15, 0.186] }, // x0, y0, x1, y1, z of the glass: tv.js puts the video here
   bookshelf: { name: 'Bookshelf', icon: '📚', price: 180, w: 0.9, d: 0.35, h: 1.8, shop: true, surface: { y: 1.8, r: [0, 0, 0.9, 0.35] },
     desc: 'Full of books. You might even read one.',
     build() {
@@ -164,20 +166,84 @@ const DEFS = {
     desc: 'Ties the room together.',
     build() { box(0, 0, 0, 1.6, 0.012, 1.2, '#2f5d8a'); box(0.1, 0.012, 0.1, 1.4, 0.004, 1.0, '#3f77a8'); box(0.35, 0.016, 0.35, 0.9, 0.003, 0.5, '#e8d27a'); } },
 };
+
+// ---------------------------------------------------------------------
+// Wall art. Each piece is a flat picture: a frame, a canvas colour and a list of shapes in 0..1 canvas units
+// ([x, y from the top, w, h, colour, glow group]). The same list draws the 3D piece and the shop preview.
+// ---------------------------------------------------------------------
+const AD = 0.035; // depth off the wall
+function circ(cx, cy, r, asp, col, n = 9, glow) { // a disc made of horizontal strips; r in canvas heights, asp = w / h
+  const out = [];
+  for (let i = 0; i < n; i++) { const y0 = -r + 2 * r * i / n, y1 = y0 + 2 * r / n, ym = (y0 + y1) / 2, hw = Math.sqrt(Math.max(0, r * r - ym * ym)) / asp;
+    out.push([cx - hw, cy + y0, hw * 2, y1 - y0, col, glow]); }
+  return out;
+}
+function tri(cx, base, top, hw, col, n = 8) { // a mountain: strips narrowing towards the peak (y from the top)
+  const out = [];
+  for (let i = 0; i < n; i++) { const y0 = top + (base - top) * i / n, k = (i + 1) / n; out.push([cx - hw * k, y0, hw * k * 2, (base - top) / n + 0.002, col]); }
+  return out;
+}
+function pix(rows, pal) { // pixel art: one character per pixel, '.' = empty; runs of the same colour merge into one strip
+  const out = [], H = rows.length, W = rows[0].length;
+  rows.forEach((row, y) => { for (let x = 0; x < W;) { const c = row[x]; let e = x; while (e < W && row[e] === c) e++; if (c !== '.') out.push([x / W, y / H, (e - x) / W, 1 / H, pal[c]]); x = e; } });
+  return out;
+}
+const ART = {
+  poster: { name: 'Old band poster', w: 0.6, h: 0.8, frame: '#1d1730', bg: '#b98cff', resale: 5, shapes: () => [[0.2, 0.27, 0.6, 0.46, '#7cf5ff']] },
+  art_sunset: { name: 'Sunset Stripes', price: 45, w: 0.9, h: 0.6, frame: '#2b2230', bg: '#ffcf5a', desc: 'A sunset that never ends. Unlike your savings.',
+    shapes: () => [[0, 0.2, 1, 0.2, '#ffa94d'], [0, 0.4, 1, 0.2, '#ff7a5c'], [0, 0.6, 1, 0.2, '#d9507a'], [0, 0.8, 1, 0.2, '#6b3a7a'], ...circ(0.5, 0.62, 0.22, 1.5, '#fff1c4')] },
+  art_grid: { name: 'Primary Grid', price: 120, w: 0.7, h: 0.7, frame: '#f2efe6', bg: '#f7f4ea', desc: 'Very modern. Very expensive-looking. Not that expensive.',
+    shapes: () => [[0, 0, 0.55, 0.6, '#d8312b'], [0.62, 0.68, 0.38, 0.32, '#1f4fa8'], [0, 0.68, 0.18, 0.32, '#f2c230'], [0.62, 0, 0.38, 0.18, '#f2c230'],
+      [0.55, 0, 0.07, 1, '#151515'], [0, 0.6, 1, 0.08, '#151515'], [0.18, 0.6, 0.05, 0.4, '#151515'], [0.62, 0.18, 0.38, 0.05, '#151515']] },
+  art_cat: { name: 'Pixel Cat', price: 60, w: 0.5, h: 0.5, frame: '#3a2a20', bg: '#a8d8e8', desc: 'A cat that will never knock anything off your desk.',
+    shapes: () => pix(['............', '..o......o..', '..oo....oo..', '..oooooooo..', '.oowoooowoo.', '.oobooooboo.', '.oooopoooo..', '.ooooooooo..', '..oooooooo..', '..oo.oo.oo..', '..oo.oo.oo..', '............'],
+      { o: '#f29a3a', w: '#ffffff', b: '#1d1d1d', p: '#ff8aa8' }) },
+  art_city: { name: 'Night City', price: 90, w: 1.0, h: 0.5, frame: '#151520', bg: '#1b2550', desc: 'The skyline you look at instead of going outside.',
+    shapes: () => { const o = [...circ(0.82, 0.22, 0.12, 2, '#f4f0d0')]; const b = [[0.02, 0.55, 0.1, 0.45], [0.13, 0.35, 0.12, 0.65], [0.27, 0.5, 0.09, 0.5], [0.38, 0.25, 0.13, 0.75], [0.53, 0.45, 0.1, 0.55], [0.65, 0.6, 0.14, 0.4], [0.81, 0.4, 0.1, 0.6], [0.92, 0.65, 0.08, 0.35]];
+      for (const [x, y, w, h] of b) { o.push([x, y, w, h, '#0c0f22']); for (let wy = y + 0.06; wy < 0.95; wy += 0.1) for (let wx = x + 0.02; wx < x + w - 0.02; wx += 0.035) if ((wx * 97 + wy * 53) % 1 > 0.45) o.push([wx, wy, 0.015, 0.04, '#ffd66b']); }
+      return o; } },
+  art_bolt: { name: 'Neon Bolt', price: 150, w: 0.4, h: 0.6, frame: '#101014', bg: '#17171d', desc: 'A neon sign that cycles colours. Lights up your whole personality.',
+    shapes: () => [[0.45, 0.06, 0.25, 0.08], [0.38, 0.14, 0.24, 0.1], [0.3, 0.24, 0.24, 0.12], [0.22, 0.36, 0.5, 0.08], [0.42, 0.44, 0.22, 0.1], [0.36, 0.54, 0.2, 0.12], [0.3, 0.66, 0.16, 0.12], [0.26, 0.78, 0.12, 0.12]].map(r => [...r, '#ffffff', GLOW.ARCADE]) },
+  art_win: { name: 'Big Win', price: 250, w: 0.5, h: 0.6, frame: '#c9a23a', bg: '#1f6b3f', desc: 'Commemorates a jackpot you will definitely hit someday.',
+    shapes: () => pix(['...........', '.....g.....', '...ggggg...', '..gg.g.gg..', '..gg.g.....', '...gggg....', '.....g.gg..', '..gg.g.gg..', '...ggggg...', '.....g.....', '...........'], { g: '#ffd34f' }) },
+  art_blobs: { name: 'Blob Study', price: 35, w: 0.6, h: 0.8, frame: '#e8e2d2', bg: '#f3ead6', desc: 'Is it art? The price tag says yes.',
+    shapes: () => [...circ(0.38, 0.32, 0.18, 0.75, '#e07a5f'), ...circ(0.62, 0.55, 0.15, 0.75, '#3d405b'), ...circ(0.4, 0.75, 0.12, 0.75, '#81b29a'), [0.1, 0.1, 0.12, 0.03, '#f2cc8f'], [0.7, 0.85, 0.2, 0.03, '#f2cc8f']] },
+  art_peaks: { name: 'Mountain Range', price: 75, w: 0.9, h: 0.5, frame: '#4a3a2a', bg: '#9fd0f0', desc: 'Fresh air, nature, hiking. From the comfort of your room.',
+    shapes: () => [...circ(0.8, 0.25, 0.1, 1.8, '#fff3b0'), ...tri(0.3, 1, 0.25, 0.32, '#5a6f8a'), ...tri(0.3, 0.42, 0.25, 0.075, '#ffffff', 3), ...tri(0.68, 1, 0.4, 0.3, '#3f5470'), [0, 0.88, 1, 0.12, '#3f7a4a']] },
+  art_cactus: { name: 'Pixel Cactus', price: 40, w: 0.4, h: 0.5, frame: '#6b4a33', bg: '#ffe2b8', desc: 'The only plant you cannot forget to water.',
+    shapes: () => pix(['..........', '....gg....', '....gg....', '.g..gg....', '.g..gg..g.', '.gg.gg..g.', '..gggg.gg.', '....gggg..', '....gg....', '...tttt...', '...tttt...', '....tt....'], { g: '#3f9a4a', t: '#c46a3a' }) },
+};
+for (const [type, a] of Object.entries(ART)) {
+  DEFS[type] = { name: a.name, icon: '🖼', price: a.price, resale: a.resale, desc: a.desc, art: true, wall: true, solid: false, w: a.w, d: AD, h: a.h, shop: !!a.price,
+    build() { // frame, canvas, then the shapes stacked just in front
+      const m = 0.035, cw = a.w - 2 * m, ch = a.h - 2 * m;
+      box(0, 0, 0, a.w, a.h, AD - 0.006, a.frame); box(m, m, AD - 0.006, cw, ch, 0.004, a.bg);
+      a.shapes().forEach((r, i) => box(m + r[0] * cw, m + (1 - r[1] - r[3]) * ch, AD - 0.002 + (i % 3) * 0.0006, r[2] * cw, r[3] * ch, 0.0015, r[4], r[5] || 0));
+    } };
+}
+// little SVG of a piece of art for the shop
+function artSvg(type) {
+  const a = ART[type], m = 0.035, cw = a.w - 2 * m, ch = a.h - 2 * m, k = 100;
+  return `<svg viewBox="0 0 ${a.w * k} ${a.h * k}" shape-rendering="crispEdges">
+    <rect width="${a.w * k}" height="${a.h * k}" fill="${a.frame}"/><rect x="${m * k}" y="${m * k}" width="${cw * k}" height="${ch * k}" fill="${a.bg}"/>
+    ${a.shapes().map(r => `<rect x="${(m + r[0] * cw) * k}" y="${(m + r[1] * ch) * k}" width="${r[2] * cw * k + 0.3}" height="${r[3] * ch * k + 0.3}" fill="${r[5] ? '#ff6ec7' : r[4]}"/>`).join('')}</svg>`;
+}
+
 const sellValue = t => { const d = DEFS[t]; return d.price ? Math.floor(d.price / 2) : d.resale || 0; };
 
 // what the apartment came with: [type, x, z, quarter turns]
 const DEFAULT = [['bed', 0, 0, 0], ['nightstand', 1.05, 0, 0], ['desk', 2.7, 0, 0], ['chair', 3.17, 0.87, 0], ['rug', 1.6, 1.5, 0],
-  ['beanbag', 1.7, 2.55, 0], ['pizza', 3.69, 2.88, 0], ['laundry', 0.2, 2.6, 0], ['trash', 4.58, 3.46, 0]];
+  ['beanbag', 1.7, 2.55, 0], ['pizza', 3.69, 2.88, 0], ['laundry', 0.2, 2.6, 0], ['trash', 4.58, 3.46, 0], ['poster', 0, 0.6, 3, 1.25]];
 
 // ---------------------------------------------------------------------
 // State: S.furn = { pieces: [{uid, type, x, z, r, ...}], store: [{uid, type}], next, tvOn, floorOn, lavaOn, arcadeBest }
 // ---------------------------------------------------------------------
 function ensure(S) {
   if (!S.furn || S.furn.v !== 1) {
-    S.furn = { v: 1, pieces: DEFAULT.map(([type, x, z, r], i) => ({ uid: i + 1, type, x, z, r })), store: [], next: DEFAULT.length + 1,
+    S.furn = { v: 1, art: 1, pieces: DEFAULT.map(([type, x, z, r, y], i) => ({ uid: i + 1, type, x, z, r, ...(y ? { y } : {}) })), store: [], next: DEFAULT.length + 1,
       tvOn: false, floorOn: true, lavaOn: true, arcadeBest: 0 };
   }
+  if (!S.furn.art) { S.furn.art = 1; S.furn.pieces.push({ uid: S.furn.next++, type: 'poster', x: 0, z: 0.6, r: 3, y: 1.25 }); } // saves from before art could move
   cancelMove(true); sitting = null;
   rebuild();
 }
@@ -246,8 +312,29 @@ const KEEP_CLEAR = [
 ];
 const overlap = (a, b) => a[0] < b[2] - 0.001 && a[2] > b[0] + 0.001 && a[1] < b[3] - 0.001 && a[3] > b[1] + 0.001;
 function fixedSolids() { return N.solids.filter(s => !mySolids.includes(s)); }
+// what's on each wall that art can't cover: [u0, u1, y0, y1, name] along the wall (x on the north/south walls, z on east/west)
+// keyed by r, the way the art faces: 0 = north wall, 1 = east, 2 = south, 3 = west
+const WALL_BLOCK = {
+  0: [[1.18, 2.42, 0.92, 2.08, 'the window']],
+  1: [[0.9, 3.45, 0, 9, 'the kitchen']],
+  2: [[0.5, 1.5, 0, 2.16, 'the front door'], [2.55, 3.45, 0, 2.16, 'the bathroom door'], [1.45, 1.75, 0.98, 1.42, 'the light switch']],
+  3: [],
+};
+function whyWall(p, x, z, r, y) {
+  const d = DEFS[p.type], R = rect(p, x, z, r), span = q => { const Q = rect(q); return q.r % 2 ? [Q[1], Q[3]] : [Q[0], Q[2]]; };
+  const u = r % 2 ? [R[1], R[3]] : [R[0], R[2]], v = [y, y + d.h];
+  if (v[0] < 0.1 - 0.001 || v[1] > N.ROOM.h - 0.03 + 0.001) return 'Too close to the floor or ceiling';
+  for (const b of WALL_BLOCK[r]) if (u[0] < b[1] && u[1] > b[0] && v[0] < b[3] && v[1] > b[2]) return `It would cover ${b[4]}`;
+  for (const q of F().pieces) {
+    if (q === p || isMoving(q) || !DEFS[q.type].wall || q.r !== r) continue;
+    const qu = span(q), qv = [q.y || 0, (q.y || 0) + DEFS[q.type].h];
+    if (u[0] < qu[1] - 0.001 && u[1] > qu[0] + 0.001 && v[0] < qv[1] - 0.001 && v[1] > qv[0] + 0.001) return `It would overlap the ${DEFS[q.type].name}`;
+  }
+  return null;
+}
 function why(p, x, z, r) {
   const d = DEFS[p.type], R = rect(p, x, z, r);
+  if (d.wall) return whyWall(p, x, z, r, moving && moving.p === p ? moving.gy : p.y || 0);
   if (moving && moving.p === p && moving.on) { // sitting on another piece
     const s = moving.surf;
     if (R[0] < s.r[0] - 0.001 || R[1] < s.r[1] - 0.001 || R[2] > s.r[2] + 0.001 || R[3] > s.r[3] + 0.001) return "It doesn't fit up there";
@@ -260,6 +347,7 @@ function why(p, x, z, r) {
   for (const q of F().pieces) {
     if (q === p || isMoving(q) || q.on) continue;
     const qd = DEFS[q.type];
+    if (qd.wall) continue; // pictures hang above whatever is in front of them
     if (!!qd.flat !== !!d.flat) continue; // rugs go under things
     if (overlap(R, rect(q))) return `It would hit the ${qd.name.toLowerCase()}`;
   }
@@ -288,7 +376,27 @@ function aimedPiece() {
   }
   return best;
 }
+// wall art: find the wall you're aiming at and hang the piece centred on that point (r = which way it faces)
+function wallTarget() {
+  const { o, d } = aimRay(), def = DEFS[moving.p.type], W = N.ROOM.w, D = N.ROOM.d, H = N.ROOM.h;
+  const snap = v => Math.round(v / 0.05) * 0.05;
+  let best = null;
+  for (const [axis, at, r] of [[2, 0, 0], [0, W, 1], [2, D, 2], [0, 0, 3]]) {
+    if (Math.abs(d[axis]) < 1e-6) continue;
+    const t = (at - o[axis]) / d[axis]; if (t <= 0.05 || t > 4.5 || (best && t >= best.t)) continue;
+    const hx = o[0] + d[0] * t, hy = o[1] + d[1] * t, hz = o[2] + d[2] * t;
+    if (hx < -0.01 || hx > W + 0.01 || hz < -0.01 || hz > D + 0.01 || hy < 0 || hy > H) continue;
+    best = { t, r, u: axis === 2 ? hx : hz, hy };
+  }
+  if (!best) return [moving.gx, moving.gz]; // looking at the floor or ceiling: stay put
+  const r = best.r, len = r % 2 ? D : W, u0 = Math.max(0, Math.min(len - def.w, snap(best.u - def.w / 2)));
+  moving.p.r = r;
+  moving.gy = +Math.max(0.1, Math.min(H - 0.03 - def.h, snap(best.hy - def.h / 2))).toFixed(3);
+  const pos = r === 0 ? [u0, 0] : r === 2 ? [u0, D - AD] : r === 1 ? [W - AD, u0] : [0, u0];
+  return [+pos[0].toFixed(3), +pos[1].toFixed(3)];
+}
 function ghostTarget() {
+  if (DEFS[moving.p.type].wall) return wallTarget();
   const { o, d } = aimRay(), p = moving.p, [w, dd] = dims(p);
   const snap = v => Math.round(v / 0.05) * 0.05;
   moving.on = null; moving.surf = null;
@@ -388,7 +496,7 @@ function standUp() {
 }
 function seatAction() {
   if (!sitting) return;
-  if (sitting.kind === 'couch') { if (anyTvOn()) pass(60, `You watched ${pick(SHOWS)}.`); else pass(30, 'You stared at nothing for half an hour. Bliss.'); }
+  if (sitting.kind === 'couch') { if (anyTvOn()) { const ch = N.tvNow && N.tvNow(); pass(60, `You watched ${ch || pick(SHOWS)}.`); } else pass(30, 'You stared at nothing for half an hour. Bliss.'); }
   else if (sitting.kind.startsWith('beanbag')) pass(15, 'You sink deeper into the beanbag. It sighs. So do you.');
 }
 N.sitPose = () => sitting && sitting.t > 0.25 ? { x: sitting.x, z: sitting.z, y: sitting.y, yaw: sitting.yaw, legs: sitting.legs } : null;
@@ -423,7 +531,7 @@ function showHint(aim) {
     html = `Sitting · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>Space</kbd> stand up${act ? ` · <kbd>T</kbd> ${act}` : ''}`;
   } else if (moving) {
     const d = DEFS[moving.p.type];
-    html = `Placing <b>${d.icon} ${d.name}</b> · <kbd>R</kbd> rotate · <kbd>E</kbd>/click place · <kbd>Q</kbd> cancel${d.essential ? '' : ' · <kbd>X</kbd> storage'}` +
+    html = `Placing <b>${d.icon} ${d.name}</b> · ${d.wall ? 'aim at a wall' : '<kbd>R</kbd> rotate'} · <kbd>E</kbd>/click place · <kbd>Q</kbd> cancel${d.essential ? '' : ' · <kbd>X</kbd> storage'}` +
       (moving.why ? `<br><span style="color:#ff8a8a">${moving.why}</span>` : `<br><span style="color:#8affb0">${moving.on ? `Fits on the ${DEFS[F().pieces.find(q => q.uid === moving.on).type].name.toLowerCase()}` : 'Fits here'}</span>`) +
       (d.stack && !moving.on ? '<br><span style="color:#aab">Aim at a bed, desk, table, couch or shelf to put it on top</span>' : '');
   } else if (aim) html = `<kbd>F</kbd> Move ${DEFS[aim.type].name.toLowerCase()}`;
@@ -434,7 +542,7 @@ function showHint(aim) {
 N.hooks.key.push(code => {
   if (!N.S || !N.S.furn) return;
   if (moving) {
-    if (code === 'KeyR') { moving.p.r = (moving.p.r + 1) % 4; thud(420); }
+    if (code === 'KeyR') { if (!DEFS[moving.p.type].wall) { moving.p.r = (moving.p.r + 1) % 4; thud(420); } }
     else if (code === 'KeyE' || code === 'Enter') placeMove();
     else if (code === 'KeyQ') cancelMove();
     else if (code === 'KeyX' || code === 'Delete' || code === 'Backspace') storeMove();
@@ -452,7 +560,7 @@ document.addEventListener('mousedown', e => {
   if (e.button === 0) placeMove(); else if (e.button === 2) cancelMove();
 });
 document.addEventListener('contextmenu', e => { if (moving) e.preventDefault(); });
-document.addEventListener('wheel', e => { if (moving && N.active) { moving.p.r = (moving.p.r + (e.deltaY > 0 ? 1 : 3)) % 4; thud(420); } }, { passive: true });
+document.addEventListener('wheel', e => { if (moving && N.active && !DEFS[moving.p.type].wall) { moving.p.r = (moving.p.r + (e.deltaY > 0 ? 1 : 3)) % 4; thud(420); } }, { passive: true });
 
 // per frame: ghost position, hint, plant droop on a new day, animated glows
 let lastDay = 0;
@@ -480,7 +588,7 @@ N.hooks.draw.push(() => {
   if (!N.active && hintKey) { hintKey = ''; hint.style.display = 'none'; } // paused, PC open, etc.
   if (!N.S || !N.S.furn) return;
   const t = performance.now() / 1000, pw = N.env.power, f = F(), g = N.env.glow;
-  g[GLOW.TV] = f.tvOn ? [0.35 + 0.25 * Math.sin(t * 2.3), 0.45 + 0.2 * Math.sin(t * 3.1 + 1), 0.75 + 0.2 * Math.sin(t * 1.7 + 2)].map(v => v * pw) : [0.04, 0.04, 0.05];
+  g[GLOW.TV] = f.tvOn && N.tvShowing && N.tvShowing() ? [0.02, 0.02, 0.03] : f.tvOn ? [0.35 + 0.25 * Math.sin(t * 2.3), 0.45 + 0.2 * Math.sin(t * 3.1 + 1), 0.75 + 0.2 * Math.sin(t * 1.7 + 2)].map(v => v * pw) : [0.04, 0.04, 0.05];
   g[GLOW.LAVA] = f.lavaOn ? [1.0 * pw, (0.42 + 0.15 * Math.sin(t * 0.9)) * pw, (0.3 + 0.12 * Math.sin(t * 0.6 + 2)) * pw] : [0.25, 0.1, 0.08];
   g[GLOW.TANK] = [0.22, 0.58 + 0.04 * Math.sin(t * 1.3), 0.82].map(v => v * (0.35 + 0.65 * pw));
   g[GLOW.FLOORLAMP] = f.floorOn ? [1.0, 0.86, 0.6].map(v => v * pw) : [0.42, 0.38, 0.32];
@@ -502,6 +610,7 @@ N.hooks.interact.push(id => {
   const [, uid, act] = id.split(':'), p = F().pieces.find(q => q.uid === +uid), f = F();
   if (!p) return true;
   if (act === 'sit') { if (sitting && sitting.p === p) standUp(); else sitDown(p); }
+  else if (act === 'tv' && N.tvRemote) N.tvRemote(p); // tv.js: the remote with YouTube channels
   else if (act === 'tv') { f.tvOn = !f.tvOn; thud(f.tvOn ? 500 : 250); N.save(); if (f.tvOn && !f.pieces.some(q => q.type === 'couch')) N.toast('Get a couch from Nestly to actually watch it.', '', 2600); }
   else if (act === 'read') pass(30, `You read ${pick(BOOKS)}.`);
   else if (act === 'water') { if (p.water === dayNow() && !thirsty(p)) N.toast("It's had enough water today."); else { p.water = dayNow(); rebuild(); N.save(); N.toast('Glug glug. The plant perks up.', 'good'); } }
@@ -511,7 +620,7 @@ N.hooks.interact.push(id => {
   else if (act === 'arcade') {
     const score = Math.round((2000 + Math.random() * Math.random() * 98000) / 10) * 10, best = f.arcadeBest || 0;
     f.arcadeBest = Math.max(best, score);
-    pass(20, score > best ? `NEW HIGH SCORE: ${score.toLocaleString()}! You type your initials: N E E T.` : `You scored ${score.toLocaleString()}. High score is still ${best.toLocaleString()}.`, score > best ? 'good' : '');
+    pass(20, score > best ? `NEW HIGH SCORE: ${score.toLocaleString()}! You type your initials: P O G.` : `You scored ${score.toLocaleString()}. High score is still ${best.toLocaleString()}.`, score > best ? 'good' : '');
   }
   return true;
 });
@@ -530,6 +639,7 @@ css.textContent = `
   .fu-card .ic { font-size:34px; line-height:1; } .fu-card .nm { font-weight:800; font-size:15px; } .fu-card .ds { font-size:12px; color:#6a6880; flex:1; }
   .fu-card .row { display:flex; align-items:center; justify-content:space-between; gap:6px; } .fu-card .pr { font-weight:900; font-size:16px; }
   .fu-card .sz { font-size:11px; color:#9a98a8; }
+  .art-prev { background:#e9e5da; border-radius:8px; padding:10px; display:flex; justify-content:center; align-items:center; height:116px; } .art-prev svg { width:auto; max-width:100%; height:96px; }
   .fu-list { display:flex; flex-direction:column; gap:6px; } .fu-item { display:flex; align-items:center; gap:10px; background:#fff; border:1px solid #ddd9cf; border-radius:10px; padding:8px 10px; }
   .fu-item .ic { font-size:22px; width:28px; text-align:center; } .fu-item .nm { flex:1; font-weight:700; } .fu-item .wbtn { padding:5px 10px; font-size:12px; }
   .fu-note { font-size:12px; color:#6a6880; margin:4px 0 10px; } .fu-h4 { margin:14px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:#7a7790; }`;
@@ -537,14 +647,19 @@ document.head.appendChild(css);
 let tab = 'shop';
 function render(body) {
   const S = N.S, f = F();
-  const shopItems = Object.entries(DEFS).filter(([, d]) => d.shop);
+  const shopItems = Object.entries(DEFS).filter(([, d]) => d.shop && !d.art), artItems = Object.entries(DEFS).filter(([, d]) => d.shop && d.art);
   let html = `<div class="fu-head"><h3>Nestly 🛋</h3><span class="fu-bal">Balance ${N.money(S.money)}</span></div>
     <p>Flat-pack furniture, delivered same minute. Assembly not required. Somehow.</p>
-    <div class="fu-tabs"><button data-tab="shop" class="${tab === 'shop' ? 'on' : ''}">Shop</button><button data-tab="mine" class="${tab === 'mine' ? 'on' : ''}">My furniture${f.store.length ? ` (${f.store.length} in storage)` : ''}</button></div>`;
+    <div class="fu-tabs"><button data-tab="shop" class="${tab === 'shop' ? 'on' : ''}">Furniture</button><button data-tab="art" class="${tab === 'art' ? 'on' : ''}">Wall art</button><button data-tab="mine" class="${tab === 'mine' ? 'on' : ''}">My furniture${f.store.length ? ` (${f.store.length} in storage)` : ''}</button></div>`;
   if (tab === 'shop') {
     html += `<div class="fu-grid">${shopItems.map(([type, d]) => `<div class="fu-card"><div class="ic">${d.icon}</div><div class="nm">${d.name}</div><div class="ds">${d.desc}</div>
       <div class="sz">${d.w.toFixed(1)} × ${d.d.toFixed(1)} m</div>
       <div class="row"><span class="pr">$${d.price.toLocaleString()}</span><button class="wbtn ${S.money >= d.price ? 'gold' : ''}" data-buy="${type}" ${S.money >= d.price ? '' : 'disabled'}>Buy &amp; place</button></div></div>`).join('')}</div>`;
+  } else if (tab === 'art') {
+    html += `<p class="fu-note">Hangs on any wall. Once it's up, look at it and press <b>F</b> to move it somewhere else.</p>
+      <div class="fu-grid">${artItems.map(([type, d]) => `<div class="fu-card"><div class="art-prev">${artSvg(type)}</div><div class="nm">${d.name}</div><div class="ds">${d.desc}</div>
+      <div class="sz">${d.w.toFixed(1)} × ${d.h.toFixed(1)} m</div>
+      <div class="row"><span class="pr">$${d.price.toLocaleString()}</span><button class="wbtn ${S.money >= d.price ? 'gold' : ''}" data-buy="${type}" ${S.money >= d.price ? '' : 'disabled'}>Buy &amp; hang</button></div></div>`).join('')}</div>`;
   } else {
     html += `<p class="fu-note">Tip: in your room, look at any piece and press <b>F</b> to move it. <b>R</b> rotates, <b>E</b> or click places it.</p>`;
     html += `<div class="fu-h4">Storage</div>` + (f.store.length ? `<div class="fu-list">${f.store.map(p => { const d = DEFS[p.type], v = sellValue(p.type);
@@ -576,12 +691,13 @@ function buy(type) {
   f.store.push(p); N.save();
   N.closePC();
   startMove(p, 'store');
-  N.toast(`${d.name} delivered! Find a spot for it.`, 'good', 3000);
+  N.toast(d.wall ? `${d.name} delivered! Aim at a wall to hang it.` : `${d.name} delivered! Find a spot for it.`, 'good', 3000);
 }
 setTimeout(() => N.pcAddApp('furni', '🛋', 'Nestly', 'linear-gradient(135deg,#f6a65a,#e0533d)', render), 0); // after the other apps
 
 N.hooks.fresh.push(ensure);
 if (N.S) ensure(N.S);
 
-window.__furn = { DEFS, get F() { return F(); }, get moving() { return moving; }, get sitting() { return sitting; }, startMove, placeMove, cancelMove, storeMove, rebuild, why, aimedPiece, buy, render };
+N.furn = { DEFS, F, xfPt, xfBox, rect, isMoving, anyTvOn, get sitting() { return sitting; }, get moving() { return moving; }, thud, pass, pick };
+window.__furn = { DEFS, ART, get F() { return F(); }, get moving() { return moving; }, get sitting() { return sitting; }, startMove, placeMove, cancelMove, storeMove, rebuild, why, aimedPiece, buy, render };
 })();
