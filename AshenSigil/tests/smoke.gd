@@ -113,6 +113,13 @@ func _test_sigil_mode() -> void:
 	p.paper = start_paper
 
 
+func _click(p: Player, pressed: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = pressed
+	p._unhandled_input(ev)
+
+
 func _spawn_dummy(offset: Vector3) -> Enemy:
 	var e := Enemy.new()
 	e.setup("cultist", null, 1)
@@ -143,6 +150,32 @@ func _test_swings() -> void:
 		_check(e.health < before, "%s hits (%.0f -> %.0f)" % [Fighter.SWING_NAMES[type], before, e.health])
 		e.queue_free()
 		await _frames(2)
+
+	# A click while still recovering is remembered and swings as soon as it can.
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.begin_windup(Fighter.Swing.SLASH_RL)
+	p.release_swing(1.0)
+	while p.state != Fighter.State.RECOVER:
+		await _frames(1)
+	_click(p, true)
+	_click(p, false)
+	var swung := false
+	for i in 90:
+		await _frames(1)
+		if p.state == Fighter.State.SWING:
+			swung = true
+			break
+	_check(swung, "a quick click during recovery is buffered into a swing")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	p.stamina = 0.0
+	_click(p, true)
+	_check(p.state != Fighter.State.WINDUP and p.winded_t > 0.0, "a click with no stamina flashes the stamina bar")
+	_click(p, false)
+	p.stamina = p.max_stamina
+	await _frames(30)
 
 	# A parry staggers the attacker.
 	var foe := _spawn_dummy(Vector3(0, 0, -1.4))

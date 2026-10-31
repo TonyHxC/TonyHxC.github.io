@@ -12,15 +12,24 @@ const CAM_RIGHT := Vector3(0.70710678, 0.0, -0.70710678)
 const FULL_CHARGE := 0.7
 const DRAG_DEADZONE := 25.0
 const SPELL_REACH := 9.0
+## A click that lands while you're still busy is remembered this long (real seconds).
+const ATTACK_BUFFER := 0.4
+## A buffered click that was already released still winds up this long before swinging.
+const TAP_WINDUP := 0.08
 
 var cam: Camera3D
 var aim_point := Vector3.ZERO
 var paper := 8
 var glyph_open := false
 var facing_locked := false
+## > 0 while the HUD should flash the stamina bar: a swing was refused for lack of it.
+var winded_t := 0.0
 
 var _drag := Vector2.ZERO
 var _combo_flip := false
+var _buffer_t := 0.0
+var _buffer_released := false
+var _auto_release := false
 
 
 func _init() -> void:
@@ -61,8 +70,16 @@ func _think(delta: float) -> void:
 		set_guard(false)
 		return
 	set_guard(Input.is_action_pressed("guard") and state == State.IDLE)
+	winded_t = maxf(0.0, winded_t - Game.real_delta)
+	if _buffer_t > 0.0:
+		_buffer_t -= Game.real_delta
+		if _try_windup():
+			_buffer_t = 0.0
+			_auto_release = _buffer_released
 	if state == State.WINDUP:
 		set_windup_type(_drag_to_swing())
+		if _auto_release and state_time >= TAP_WINDUP:
+			_release()
 	super._think(delta)
 
 
@@ -76,12 +93,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("attack"):
 		_drag = Vector2.ZERO
-		begin_windup(_default_slash())
-	elif event.is_action_released("attack") and state == State.WINDUP:
-		var power := remap(clampf(state_time, 0.1, FULL_CHARGE), 0.1, FULL_CHARGE, 0.6, 1.5)
-		_assist_aim()
-		release_swing(power)
-		_combo_flip = not _combo_flip
+		if not _try_windup():
+			# Still recovering, staggered or dodging: remember the click.
+			_buffer_t = ATTACK_BUFFER
+			_buffer_released = false
+	elif event.is_action_released("attack"):
+		if state == State.WINDUP:
+			_release()
+		elif _buffer_t > 0.0:
+			_buffer_released = true
 	elif event is InputEventMouseMotion and state == State.WINDUP:
 		_drag += (event as InputEventMouseMotion).relative
 	elif event.is_action_pressed("dodge"):
@@ -92,6 +112,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			glyph_requested.emit()
 		else:
 			Game.toast("No paper left.", Color(0.8, 0.5, 0.4))
+
+
+func _try_windup() -> bool:
+	if begin_windup(_default_slash()):
+		_auto_release = false
+		return true
+	if can_attack() and stamina < 5.0:
+		winded_t = 0.5
+	return false
+
+
+func _release() -> void:
+	var power := remap(clampf(state_time, 0.1, FULL_CHARGE), 0.1, FULL_CHARGE, 0.6, 1.5)
+	_auto_release = false
+	_assist_aim()
+	release_swing(power)
+	_combo_flip = not _combo_flip
 
 
 func charge() -> float:

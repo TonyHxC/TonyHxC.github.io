@@ -89,6 +89,9 @@ func _on_draw() -> void:
 	var by := s.y - 64.0
 	_bar(Rect2(bx, by, 280, 16), player.health / player.max_health, Color(0.6, 0.05, 0.04))
 	_bar(Rect2(bx, by + 22, 280, 9), player.stamina / player.max_stamina, Color(0.75, 0.62, 0.25))
+	if player.winded_t > 0.0:
+		# Too winded to swing: flash the stamina bar so a dead click isn't a mystery.
+		c.draw_rect(Rect2(bx, by + 22, 280, 9).grow(3), Color(1.0, 0.25, 0.15, player.winded_t * 2.0), false, 2.0)
 	_text(Vector2(bx, by - 10), "%d / %d" % [ceili(player.health), int(player.max_health)], 14, Color(0.85, 0.75, 0.7))
 
 	# Paper stack beside the bars.

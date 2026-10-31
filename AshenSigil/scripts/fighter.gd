@@ -332,8 +332,14 @@ func _dead_physics(delta: float) -> void:
 
 # --- actions ----------------------------------------------------------------
 
+## Free to start a swing: idle, or in the last stretch of the previous swing's
+## recovery, so chained attacks flow instead of waiting for a full stop.
+func can_attack() -> bool:
+	return state == State.IDLE or (state == State.RECOVER and state_time >= RECOVER_TIME[swing_type] * 0.6)
+
+
 func begin_windup(type: Swing) -> bool:
-	if state != State.IDLE or stamina < 5.0:
+	if not can_attack() or stamina < 5.0:
 		return false
 	swing_type = type
 	_set_state(State.WINDUP)
