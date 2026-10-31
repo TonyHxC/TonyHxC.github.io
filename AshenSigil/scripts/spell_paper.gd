@@ -42,7 +42,7 @@ func _ready() -> void:
 	_light = OmniLight3D.new()
 	_light.light_color = Spells.GLYPHS[glyph].color
 	_light.light_energy = 0.0
-	_light.omni_range = 4.0
+	_light.omni_range = 3.5
 	add_child(_light)
 	global_position = from
 
@@ -56,11 +56,41 @@ func _process(delta: float) -> void:
 	_sheet.rotation = Vector3(_t * 9.0, _t * 13.0, 0.0)
 	if p > 0.35 and not _lit:
 		_lit = true
-		Fx.sparks(global_position, Spells.GLYPHS[glyph].color, 10)
+		Fx.sparks(global_position, Spells.GLYPHS[glyph].color, 8)
+		_trail()
 	if _lit:
-		_mat.emission_energy_multiplier = lerpf(_mat.emission_energy_multiplier, 4.0, 0.2)
-		_light.light_energy = lerpf(_light.light_energy, 3.0, 0.2)
+		_mat.albedo_color = _mat.albedo_color.lerp(Color(0.12, 0.07, 0.04), 0.08)
+		_mat.emission_energy_multiplier = lerpf(_mat.emission_energy_multiplier, 2.0, 0.2)
+		_light.light_energy = lerpf(_light.light_energy, 2.0, 0.2)
 	if p >= 1.0:
 		if is_instance_valid(caster):
 			Spells.detonate(glyph, power, caster, to)
+			Fx.ash_burst(to + Vector3(0, 0.5, 0), 24, 1.0)
 		queue_free()
+
+
+## The burning sheet sheds ash as it flies; the flakes outlive it.
+func _trail() -> void:
+	var ash := CPUParticles3D.new()
+	ash.amount = 30
+	ash.lifetime = 2.5
+	ash.local_coords = false
+	ash.mesh = Fx._ash()
+	ash.direction = Vector3.UP
+	ash.spread = 180.0
+	ash.initial_velocity_max = 0.4
+	ash.gravity = Vector3(0, -0.3, 0)
+	ash.angular_velocity_min = -200.0
+	ash.angular_velocity_max = 200.0
+	Game.world.add_child(ash)
+	ash.global_position = global_position
+	ash.emitting = true
+	# Ride along with the sheet, then stop and fade once it's gone.
+	var follow := func() -> void:
+		if is_instance_valid(ash) and is_inside_tree():
+			ash.global_position = global_position
+	get_tree().process_frame.connect(follow)
+	tree_exiting.connect(func() -> void:
+		get_tree().process_frame.disconnect(follow)
+		ash.emitting = false
+		ash.get_tree().create_timer(ash.lifetime).timeout.connect(ash.queue_free))

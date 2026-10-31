@@ -84,17 +84,66 @@ static func fire_burst(pos: Vector3, radius: float) -> void:
 	p.scale_amount_min = 0.8
 	p.scale_amount_max = 2.2
 	p.color_ramp = _fire_ramp()
-	flash(pos + Vector3(0, 1, 0), Color(1.0, 0.5, 0.15), 6.0, radius * 3.0, 0.5)
+	flash(pos + Vector3(0, 1, 0), Color(1.0, 0.5, 0.15), 4.5, radius * 3.0, 0.5)
 	scorch(pos, radius * 0.7)
+	ash_burst(pos + Vector3(0, 0.6, 0), 40, radius)
 
 
-static func fizzle(pos: Vector3) -> void:
-	var p := _particles(pos, 20, 0.8, _drops(Color(0.15, 0.13, 0.12)))
+## Grey flakes that lift on the heat and drift down slowly.
+static func ash_burst(pos: Vector3, amount: int, spread_radius := 0.5) -> void:
+	var p := _particles(pos, amount, 3.0, _ash())
+	p.explosiveness = 0.6
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = spread_radius * 0.5
 	p.direction = Vector3.UP
-	p.spread = 40.0
-	p.initial_velocity_max = 2.0
-	p.gravity = Vector3(0, 1.0, 0)
-	flash(pos, Color(0.9, 0.4, 0.2), 1.5, 3.0, 0.2)
+	p.spread = 60.0
+	p.initial_velocity_min = 0.5
+	p.initial_velocity_max = 2.2
+	p.gravity = Vector3(0, -0.35, 0)
+	p.damping_min = 0.8
+	p.damping_max = 1.6
+	p.angular_velocity_min = -180.0
+	p.angular_velocity_max = 180.0
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+
+
+## A slow, constant fall of ash over the yard, following the hero.
+static func drifting_ash(follow: Node3D) -> void:
+	var p := CPUParticles3D.new()
+	p.amount = 140
+	p.lifetime = 9.0
+	p.preprocess = 9.0
+	p.local_coords = false
+	p.mesh = _ash()
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(15, 0.5, 15)
+	p.position.y = 7.0
+	p.direction = Vector3(0.3, -1, 0.1)
+	p.spread = 25.0
+	p.initial_velocity_min = 0.4
+	p.initial_velocity_max = 0.9
+	p.gravity = Vector3(0.05, -0.08, 0.0)
+	p.angular_velocity_min = -90.0
+	p.angular_velocity_max = 90.0
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.1
+	follow.add_child(p)
+
+
+static var _ash_mesh: QuadMesh
+
+static func _ash() -> Mesh:
+	if _ash_mesh == null:
+		_ash_mesh = QuadMesh.new()
+		_ash_mesh.size = Vector2(0.06, 0.05)
+		var mat := StandardMaterial3D.new()
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		mat.albedo_color = Color(0.32, 0.3, 0.29)
+		mat.roughness = 1.0
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_ash_mesh.material = mat
+	return _ash_mesh
 
 
 ## A jagged bolt from a to b, made of thin glowing boxes.

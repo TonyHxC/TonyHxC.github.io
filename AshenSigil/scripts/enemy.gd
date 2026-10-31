@@ -25,9 +25,9 @@ func setup(k: String, t: Fighter, wave: int) -> void:
 			weapon_damage = 11.0
 			weapon_reach = 1.15
 			weapon_length = 0.5
-			weapon_color = Color(0.75, 0.7, 0.6)
-			body_color = Color(0.38, 0.4, 0.34)
-			skin_color = Color(0.5, 0.52, 0.45)
+			weapon_color = Color(0.62, 0.58, 0.5)
+			body_color = Color(0.36, 0.36, 0.3)
+			skin_color = Color(0.42, 0.44, 0.38)
 			windup_len = 0.42
 		"cultist":
 			max_health = 85.0
@@ -35,7 +35,9 @@ func setup(k: String, t: Fighter, wave: int) -> void:
 			weapon_damage = 19.0
 			weapon_reach = 1.7
 			weapon_length = 1.1
-			body_color = Color(0.3, 0.04, 0.05)
+			weapon_texture = "rusty_metal_02"
+			weapon_color = Color(0.75, 0.7, 0.65)
+			body_color = Color(0.4, 0.13, 0.1)
 			eye_color = Color(1.0, 0.2, 0.1)
 			windup_len = 0.7
 			swings = [Swing.SLASH_RL, Swing.SLASH_LR, Swing.OVERHEAD, Swing.THRUST]
@@ -45,8 +47,9 @@ func setup(k: String, t: Fighter, wave: int) -> void:
 			weapon_damage = 34.0
 			weapon_reach = 2.1
 			weapon_length = 1.5
-			weapon_color = Color(0.3, 0.28, 0.26)
-			body_color = Color(0.2, 0.17, 0.15)
+			weapon_texture = "rusty_metal_02"
+			weapon_color = Color(0.6, 0.55, 0.5)
+			body_color = Color(0.3, 0.26, 0.22)
 			skin_color = Color(0.35, 0.3, 0.28)
 			eye_color = Color(1.0, 0.55, 0.1)
 			windup_len = 0.95
@@ -61,17 +64,19 @@ func _dress() -> void:
 	match kind:
 		"ghoul":
 			# Hunched, long-armed, too thin.
-			_part(_capsule(0.07, 0.9), Vector3(-0.32, 0.95, -0.15), skin_color)
-			_part(_capsule(0.07, 0.9), Vector3(0.32, 0.95, -0.15), skin_color)
+			_part(_capsule(0.05, 0.95), Vector3(-0.3, 0.95, -0.15), skin_color)
+			_part(_capsule(0.05, 0.95), Vector3(0.3, 0.95, -0.15), skin_color)
+			visual.get_child(3).rotation.x = -0.35  # hunched chest
 		"cultist":
-			_part(_cone(0.45, 1.25, 0.24), Vector3(0.0, 0.7, 0.0), body_color)
-			_part(_cone(0.24, 0.45, 0.0), Vector3(0.0, 1.85, 0.03), body_color.darkened(0.3))
+			_part(_cone(0.42, 1.2, 0.22), Vector3(0.0, 0.62, 0.0), body_color, true, cloth_texture)
+			_part(_cone(0.2, 0.4, 0.0), Vector3(0.0, 1.76, 0.02), body_color.darkened(0.35), true, cloth_texture)
 		"brute":
-			_part(_box(Vector3(0.85, 0.3, 0.4)), Vector3(0.0, 1.45, 0.0), body_color.lightened(0.1))
-			_part(_cone(0.07, 0.3), Vector3(-0.15, 1.9, 0.0), Color(0.8, 0.75, 0.65))
-			_part(_cone(0.07, 0.3), Vector3(0.15, 1.9, 0.0), Color(0.8, 0.75, 0.65))
-	_glow_part(_sphere(0.035), Vector3(-0.07, 1.7, -0.15), eye_color)
-	_glow_part(_sphere(0.035), Vector3(0.07, 1.7, -0.15), eye_color)
+			var pauldron := _part(_box(Vector3(0.8, 0.22, 0.36)), Vector3(0.0, 1.45, 0.0), Color(0.6, 0.55, 0.5), true, "rusty_metal_02")
+			pauldron.rotation.z = 0.05
+			_part(_cone(0.05, 0.26), Vector3(-0.12, 1.82, 0.0), Color(0.62, 0.58, 0.5))
+			_part(_cone(0.05, 0.26), Vector3(0.12, 1.82, 0.0), Color(0.62, 0.58, 0.5))
+	_glow_part(_sphere(0.022), Vector3(-0.045, 1.68, -0.1), eye_color, 1.6)
+	_glow_part(_sphere(0.022), Vector3(0.045, 1.68, -0.1), eye_color, 1.6)
 	# Rise out of the earth.
 	visual.position.y = -1.9
 	create_tween().tween_property(visual, "position:y", 0.0, 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)

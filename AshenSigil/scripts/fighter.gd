@@ -14,10 +14,10 @@ const SWING_NAMES := ["Slash  <-", "Slash  ->", "Overhead", "Thrust"]
 const SWING_TIME := [0.26, 0.26, 0.34, 0.2]
 const RECOVER_TIME := [0.3, 0.3, 0.5, 0.26]
 const SWING_DAMAGE := [1.0, 1.0, 1.4, 1.1]
-const WEAPON_POS := Vector3(0.28, 1.25, -0.05)
-const IDLE_POSE := Vector3(0.9, -0.5, 0.0)
-const GUARD_POSE := Vector3(0.35, 1.45, 0.0)
-const GUARD_POS := Vector3(0.2, 1.35, -0.4)
+const WEAPON_POS := Vector3(0.27, 1.42, -0.02)  # the sword shoulder
+const IDLE_POSE := Vector3(-0.35, -0.35, 0.0)
+const GUARD_POSE := Vector3(0.55, 1.2, 0.0)
+const GUARD_POS := Vector3(0.24, 1.4, -0.12)
 const PARRY_WINDOW := 0.22
 const DODGE_TIME := 0.38
 
@@ -29,6 +29,9 @@ const DODGE_TIME := 0.38
 @export var weapon_damage := 20.0
 @export var weapon_reach := 1.6
 @export var weapon_length := 1.1
+## CC0 texture names from assets/textures; "" means plain colour.
+@export var weapon_texture := ""
+@export var cloth_texture := "brown_leather"
 @export var weapon_color := Color(0.55, 0.55, 0.58)
 @export var windup_glow := Color(1.0, 0.15, 0.05)
 @export var body_color := Color(0.3, 0.3, 0.32)
@@ -87,28 +90,46 @@ func _build_body() -> void:
 	visual.name = "Visual"
 	add_child(visual)
 	var legs := body_color.darkened(0.35)
-	_part(_capsule(0.12, 0.8), Vector3(-0.13, 0.4, 0.0), legs)
-	_part(_capsule(0.12, 0.8), Vector3(0.13, 0.4, 0.0), legs)
-	_part(_capsule(0.28, 0.85), Vector3(0.0, 1.1, 0.0), body_color)
-	_part(_sphere(0.17), Vector3(0.0, 1.68, 0.0), skin_color)
+	# Roughly seven and a half heads tall, with broad shoulders for a readable silhouette.
+	_part(_capsule(0.085, 0.9), Vector3(-0.1, 0.45, 0.0), legs, true, cloth_texture)
+	_part(_capsule(0.085, 0.9), Vector3(0.1, 0.45, 0.0), legs, true, cloth_texture)
+	_part(_box(Vector3(0.34, 0.16, 0.2)), Vector3(0.0, 0.9, 0.0), legs, true, cloth_texture)
+	var chest := _part(_capsule(0.19, 0.64), Vector3(0.0, 1.22, 0.0), body_color, true, cloth_texture)
+	chest.scale = Vector3(1.2, 1.0, 0.85)
+	_part(_box(Vector3(0.54, 0.1, 0.2)), Vector3(0.0, 1.46, 0.0), body_color, true, cloth_texture)
+	_part(_capsule(0.05, 0.14), Vector3(0.0, 1.55, 0.0), skin_color)
+	_part(_sphere(0.115), Vector3(0.0, 1.66, 0.0), skin_color)
+	var off_arm := _part(_capsule(0.055, 0.62), Vector3(-0.3, 1.15, 0.0), body_color, true, cloth_texture)
+	off_arm.rotation.z = -0.12
 
+	# Sword arm and blade swing together from the shoulder.
 	weapon_pivot = Node3D.new()
 	weapon_pivot.position = WEAPON_POS
 	weapon_pivot.rotation = IDLE_POSE
 	visual.add_child(weapon_pivot)
-	weapon_mat = StandardMaterial3D.new()
-	weapon_mat.albedo_color = weapon_color
-	weapon_mat.metallic = 0.7
-	weapon_mat.roughness = 0.4
+	var arm := MeshInstance3D.new()
+	arm.mesh = _capsule(0.055, 0.5)
+	arm.rotation.x = PI / 2.0
+	arm.position.z = -0.22
+	var arm_mat := Look.cloth(cloth_texture, body_color) if cloth_texture != "" else Look.matte(body_color)
+	arm.material_override = arm_mat
+	body_mats.append(arm_mat)
+	weapon_pivot.add_child(arm)
+	if weapon_texture != "":
+		weapon_mat = Look.cloth(weapon_texture, weapon_color, 3.0)
+	else:
+		weapon_mat = Look.matte(weapon_color)
+		weapon_mat.metallic = 0.6
+		weapon_mat.roughness = 0.55
 	var blade := MeshInstance3D.new()
-	blade.mesh = _box(Vector3(0.06, 0.025, weapon_length))
-	blade.position.z = -(weapon_length * 0.5 + 0.12)
+	blade.mesh = _box(Vector3(0.055, 0.022, weapon_length))
+	blade.position.z = -(weapon_length * 0.5 + 0.55)
 	blade.material_override = weapon_mat
 	weapon_pivot.add_child(blade)
 	var guard := MeshInstance3D.new()
-	guard.mesh = _box(Vector3(0.28, 0.05, 0.05))
-	guard.position.z = -0.1
-	guard.material_override = _plain(Color(0.25, 0.2, 0.15))
+	guard.mesh = _box(Vector3(0.24, 0.045, 0.045))
+	guard.position.z = -0.53
+	guard.material_override = Look.surface("rusty_metal_02", 4.0, Color(0.55, 0.5, 0.45))
 	weapon_pivot.add_child(guard)
 	_dress()
 
@@ -118,11 +139,11 @@ func _dress() -> void:
 	pass
 
 
-func _part(mesh: Mesh, pos: Vector3, color: Color, flashes := true) -> MeshInstance3D:
+func _part(mesh: Mesh, pos: Vector3, color: Color, flashes := true, tex := "") -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.position = pos
-	var m := _plain(color)
+	var m := Look.cloth(tex, color) if tex != "" else Look.matte(color)
 	mi.material_override = m
 	if flashes:
 		body_mats.append(m)
@@ -145,10 +166,7 @@ func _glow_part(mesh: Mesh, pos: Vector3, color: Color, energy := 3.0) -> MeshIn
 
 
 static func _plain(color: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.roughness = 0.9
-	return m
+	return Look.matte(color)
 
 
 static func _capsule(r: float, h: float) -> CapsuleMesh:

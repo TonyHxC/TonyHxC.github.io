@@ -19,10 +19,12 @@ const GROUND_RADIUS := 1.1
 const FADE_TIME := 0.45
 const BURN_TIME := 0.5
 const LEARN_CASTS := 2
-const INK := Color(0.16, 0.03, 0.02)
-const PARCHMENT := Color(0.87, 0.79, 0.61)
-const EDGE := Color(0.42, 0.29, 0.16)
-const SOFT_TEXT := Color(0.85, 0.8, 0.7)
+const INK := Color(0.1, 0.05, 0.04)  # iron-gall, brown-black
+const PARCHMENT := Color(0.8, 0.71, 0.53)
+const EDGE := Color(0.36, 0.24, 0.13)
+const SOFT_TEXT := Color(0.78, 0.72, 0.6)
+const STONE := Color(0.3, 0.28, 0.26)
+const TARNISH := Color(0.42, 0.37, 0.28)
 
 var mode := Mode.CLOSED
 var player: Player
@@ -41,6 +43,11 @@ var _outline := PackedVector2Array()
 var _shapes: Dictionary
 var _center := Vector2.ZERO
 var _embers: Array = []
+var _ash: Array = []
+var _sheet: Node2D
+var _sheet_mat: ShaderMaterial
+var _fx: Node2D
+var _stone_tex: Texture2D
 var _ground: MeshInstance3D
 var _ground_mat: StandardMaterial3D
 var _reticle: MeshInstance3D
@@ -55,7 +62,31 @@ func _ready() -> void:
 	visible = false
 	Spells.teach(recognizer)
 	_shapes = Spells.shapes()
-	font = ThemeDB.fallback_font
+	font = Look.font()
+	_stone_tex = load(Look.TEX % ["rustic_stone_wall_02", "albedo"])
+
+	# The sheet is its own node so the parchment shader (fibres, stains, burn)
+	# applies to the paper and its ink together.
+	var grain := NoiseTexture2D.new()
+	grain.seamless = true
+	grain.width = 128
+	grain.height = 128
+	var noise := FastNoiseLite.new()
+	noise.frequency = 0.04
+	noise.fractal_octaves = 4
+	grain.noise = noise
+	_sheet_mat = ShaderMaterial.new()
+	_sheet_mat.shader = preload("res://shaders/parchment.gdshader")
+	_sheet_mat.set_shader_parameter("grain", grain)
+	_sheet_mat.set_shader_parameter("sheet_size", SHEET)
+	_sheet = Node2D.new()
+	_sheet.material = _sheet_mat
+	_sheet.draw.connect(_draw_sheet)
+	add_child(_sheet)
+	_fx = Node2D.new()
+	_fx.draw.connect(_draw_fx)
+	add_child(_fx)
+
 	for key in ["scratch", "chime", "ignite"]:
 		var a := AudioStreamPlayer.new()
 		a.stream = Sfx.get_sound(key)
@@ -183,6 +214,9 @@ func _process(_delta: float) -> void:
 		_rebuild_ground()
 	if _burn >= 0.0:
 		_burn += dt / BURN_TIME
+		# Ash peels off the burning edge as it goes.
+		for i in 3:
+			_spawn_ash()
 		if _burn >= 1.0:
 			_burn = -1.0
 			if mode == Mode.CLOSED:
@@ -193,12 +227,21 @@ func _process(_delta: float) -> void:
 		e["vel"] += Vector2(0, -40) * dt
 		e["pos"] += e["vel"] * dt
 	_embers = _embers.filter(func(e: Dictionary) -> bool: return e["life"] > 0.0)
+	for a in _ash:
+		a["life"] -= dt
+		a["vel"] = a["vel"].lerp(Vector2(sin(_t * 2.0 + a["seed"]) * 14.0, 10.0), dt * 1.5)
+		a["pos"] += a["vel"] * dt
+		a["spin"] += a["spin_v"] * dt
+	_ash = _ash.filter(func(a: Dictionary) -> bool: return a["life"] > 0.0)
 	if player and is_instance_valid(player) and player.cam:
 		var chest := player.cam.unproject_position(player.global_position + Vector3(0, 1.1, 0))
 		_center = chest + OFFSET + Vector2(0, sin(_t * 2.2) * 3.0)
+	_place_sheet()
 	_update_3d()
-	visible = mode != Mode.CLOSED or _burn >= 0.0 or not _embers.is_empty()
+	visible = mode != Mode.CLOSED or _burn >= 0.0 or not _embers.is_empty() or not _ash.is_empty()
 	queue_redraw()
+	_sheet.queue_redraw()
+	_fx.queue_redraw()
 
 
 func _ink_color() -> Color:
@@ -226,101 +269,148 @@ func _draw() -> void:
 		return
 	if mode != Mode.CLOSED:
 		_draw_reference()
-	if mode != Mode.CLOSED or _burn >= 0.0:
-		_draw_sheet()
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	for e in _embers:
-		var c: Color = e["color"]
-		var life: float = e["life"]
-		c.a = clampf(life / 0.6, 0.0, 1.0)
-		draw_circle(e["pos"], 1.6 + life * 2.0, c)
+	# The sheet's shadow on the ground below it; the sheet draws itself above.
+	if _sheet.visible:
+		var lift := 1.0 - maxf(_burn, 0.0)
+		draw_set_transform(_sheet.position + Vector2(7, 14 - sin(_t * 2.2) * 2.0), _sheet.rotation, _sheet.scale)
+		draw_colored_polygon(_outline, Color(0, 0, 0, 0.32 * lift))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _draw_sheet() -> void:
+func _place_sheet() -> void:
 	var unfold := 1.0 - pow(1.0 - clampf(_t / 0.22, 0.0, 1.0), 3.0)
 	var scale_v := Vector2(lerpf(0.25, 1.0, unfold), lerpf(0.05, 1.0, unfold))
-	var rot := deg_to_rad(-5.0 + sin(_t * 1.3) * 1.5)
 	var pos := _center
 	if mode == Mode.FADING:
 		pos.x += sin(_mode_t * 70.0) * 3.0 * (1.0 - _mode_t / FADE_TIME)
-	var burn := maxf(_burn, 0.0)
 	if _burn >= 0.0:
-		scale_v *= 1.0 - 0.2 * burn
-		pos.y -= burn * 14.0
+		pos.y -= _burn * 10.0
+	_sheet.position = pos
+	_sheet.rotation = deg_to_rad(-5.0 + sin(_t * 1.3) * 1.5)
+	_sheet.scale = scale_v
+	_sheet.visible = mode != Mode.CLOSED or _burn >= 0.0
+	_sheet_mat.set_shader_parameter("burn", maxf(_burn, 0.0))
 
-	# Drop shadow, offset further as it bobs higher.
-	draw_set_transform(pos + Vector2(7, 14 - sin(_t * 2.2) * 2.0), rot, scale_v)
-	draw_colored_polygon(_outline, Color(0, 0, 0, 0.35 * (1.0 - burn)))
 
-	draw_set_transform(pos, rot, scale_v)
+## Drawn in the sheet's own space; the parchment shader ages and burns it.
+func _draw_sheet() -> void:
+	var s := _sheet
 	var colors := PackedColorArray()
 	for v in _outline:
-		var shade := clampf((v.y + SHEET.y * 0.5) / SHEET.y, 0.0, 1.0) * 0.18
-		var c := PARCHMENT.darkened(shade).lerp(Color(0.12, 0.05, 0.02), burn)
-		c.a = 1.0 - burn * burn
-		colors.append(c)
-	draw_polygon(_outline, colors)
-	var edge := EDGE.lerp(Color(1.0, 0.5, 0.1), burn)
-	edge.a = 1.0 - burn
+		var shade := clampf((v.y + SHEET.y * 0.5) / SHEET.y, 0.0, 1.0) * 0.2
+		colors.append(PARCHMENT.darkened(shade))
+	s.draw_polygon(_outline, colors)
+	# Age darkens the edges first.
 	var ring := _outline.duplicate()
 	ring.append(_outline[0])
-	draw_polyline(ring, edge, 1.5 + burn * 2.0, true)
+	s.draw_polyline(ring, Color(EDGE, 0.3), 6.0, true)
+	s.draw_polyline(ring, EDGE, 1.2, true)
 
 	# The curled-over corner.
 	var hw := SHEET.x * 0.5
 	var hh := SHEET.y * 0.5
 	var fold := PackedVector2Array([Vector2(hw, hh - CURL), Vector2(hw - CURL, hh), Vector2(hw - CURL + 2, hh - CURL + 2)])
-	var fold_col := PARCHMENT.darkened(0.28)
-	fold_col.a = 1.0 - burn
-	draw_colored_polygon(fold, fold_col)
-	draw_polyline(PackedVector2Array([fold[0], fold[2], fold[1]]), edge, 1.0, true)
+	s.draw_colored_polygon(fold, PARCHMENT.darkened(0.32))
+	s.draw_polyline(PackedVector2Array([fold[0], fold[2], fold[1]]), EDGE, 1.0, true)
 
-	# Ink, scaled from wherever the gesture was drawn onto the sheet.
+	# Ink, scaled from wherever the gesture was drawn. It bleeds a little into
+	# the fibres; a sigil that takes keeps its ink but warms with a faint glow.
 	if stroke.size() > 1:
 		var ink := _to_sheet()
 		var c := _ink_color()
+		var bleed := INK
+		bleed.a = 0.2 * c.a
+		s.draw_polyline(ink, bleed, 5.0, true)
 		if mode == Mode.PREPARED or _burn >= 0.0:
 			var glow := c
-			glow.a *= 0.45 + 0.2 * sin(_t * 8.0)
-			draw_polyline(ink, glow, 8.0, true)
-			var core := c.darkened(0.15)
+			glow.a *= 0.22 + 0.1 * sin(_t * 6.0)
+			s.draw_polyline(ink, glow, 6.5, true)
+			var core := c.darkened(0.5)
 			core.a = c.a
-			draw_polyline(ink, core, 3.0, true)
+			s.draw_polyline(ink, core, 2.4, true)
 		else:
-			draw_polyline(ink, c, 2.5, true)
+			s.draw_polyline(ink, c, 2.2, true)
 
 	if mode == Mode.PREPARED:
 		var info: Dictionary = Spells.GLYPHS[glyph]
-		var label := "%s  %d%%" % [info.title, roundi(score * 100.0)]
-		draw_string(font, Vector2(-hw, hh - 9), label, HORIZONTAL_ALIGNMENT_CENTER, SHEET.x, 12, (info.color as Color).darkened(0.35))
+		var label := "%s · %d%%" % [info.title, roundi(score * 100.0)]
+		s.draw_string(font, Vector2(-hw, hh - 9), label, HORIZONTAL_ALIGNMENT_CENTER, SHEET.x, 13, (info.color as Color).darkened(0.55))
 
 
-## Three tiny glyphs near the bottom of the screen. Start dots and direction
-## arrows show while a sigil is still being learned, or while Tab is held.
+func _draw_fx() -> void:
+	for a in _ash:
+		var life: float = a["life"]
+		var c := Color(0.22, 0.2, 0.19, clampf(life, 0.0, 1.0) * 0.9)
+		_fx.draw_set_transform(a["pos"], a["spin"], Vector2.ONE)
+		var r: float = a["size"]
+		_fx.draw_colored_polygon(PackedVector2Array([Vector2(-r, -r * 0.6), Vector2(r, -r * 0.3), Vector2(r * 0.6, r * 0.7), Vector2(-r * 0.8, r * 0.4)]), c)
+	_fx.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	for e in _embers:
+		var c: Color = e["color"]
+		var life: float = e["life"]
+		c.a = clampf(life / 0.6, 0.0, 1.0)
+		_fx.draw_circle(e["pos"], 1.0 + life * 1.6, c)
+
+
+## A small carved stone tablet near the bottom of the screen with the three
+## sigils engraved in it. Start dots and stroke arrows show while a sigil is
+## still being learned, or while Tab is held.
 func _draw_reference() -> void:
 	var guide_all := Input.is_action_pressed("sigil_help")
 	var names := ["ember", "storm", "ward"]
-	var slot := 128.0
-	var y := size.y - 104.0
-	var x0 := (size.x - slot * names.size()) * 0.5
+	var slot := 112.0
+	var plate := Rect2((size.x - slot * names.size() - 24.0) * 0.5, size.y - 132.0, slot * names.size() + 24.0, 44.0)
+	_stone_plate(plate)
+	var y := plate.get_center().y
 	for i in names.size():
 		var g: String = names[i]
 		var info: Dictionary = Spells.GLYPHS[g]
-		var col: Color = info.color if (mode == Mode.PREPARED and g == glyph) else SOFT_TEXT
-		var mid := Vector2(x0 + i * slot + 22, y)
+		var lit := mode == Mode.PREPARED and g == glyph
+		var mid := Vector2(plate.position.x + 12.0 + i * slot + 22.0, y)
 		var stroke_pts: PackedVector2Array = _shapes[g][0]
 		var mini := PackedVector2Array()
 		for v in stroke_pts:
 			mini.append(mid + v * 11.0)
-		_outlined_polyline(mini, col, 2.0)
+		_engrave(mini, (info.color as Color).darkened(0.25) if lit else Color(0, 0, 0, 0))
 		if guide_all or int(learned.get(g, 0)) < LEARN_CASTS:
-			draw_circle(mini[0], 3.0, Color(0.85, 0.15, 0.08))
-			_arrow(mini, 0.38, Color(0.85, 0.15, 0.08))
-		_text(Vector2(x0 + i * slot + 40, y + 5), info.title, 14, info.color)
-	var hint := "Draw anywhere with left mouse   ·   hold Tab for guides   ·   Q / right-click: put away"
+			draw_circle(mini[0], 2.6, Color(0.62, 0.1, 0.05))
+			_arrow(mini, 0.38, Color(0.62, 0.1, 0.05))
+		var name_col: Color = info.color if lit else SOFT_TEXT
+		_text(Vector2(mid.x + 18.0, y + 5.0), info.title, 15, name_col)
+	var hint := "Draw anywhere  ·  hold Tab for guides  ·  Q or right-click to put away"
 	if mode == Mode.PREPARED:
-		hint = "Click to cast %s where you aim   ·   Q / right-click: put away" % Spells.GLYPHS[glyph].title
-	_text_centered(y + 32.0, hint, 12, Color(0.75, 0.7, 0.62, 0.9))
+		hint = "Click to cast %s where you aim  ·  Q or right-click to put away" % Spells.GLYPHS[glyph].title
+	_text_centered(plate.end.y + 18.0, hint, 13, Color(0.66, 0.6, 0.52, 0.9))
+
+
+func _stone_plate(r: Rect2) -> void:
+	draw_rect(r.grow(3), Color(0, 0, 0, 0.5))
+	draw_texture_rect(_stone_tex, r, true, STONE)
+	# Chiselled bevel: lit along the top-left, shadowed bottom-right.
+	draw_line(r.position, Vector2(r.end.x, r.position.y), Color(0.55, 0.5, 0.45, 0.6), 1.5)
+	draw_line(r.position, Vector2(r.position.x, r.end.y), Color(0.55, 0.5, 0.45, 0.4), 1.5)
+	draw_line(Vector2(r.position.x, r.end.y), r.end, Color(0, 0, 0, 0.8), 2.0)
+	draw_line(Vector2(r.end.x, r.position.y), r.end, Color(0, 0, 0, 0.7), 2.0)
+	for corner in [r.position + Vector2(6, 6), Vector2(r.end.x - 6, r.position.y + 6), Vector2(r.position.x + 6, r.end.y - 6), r.end - Vector2(6, 6)]:
+		_rivet(corner)
+
+
+func _rivet(at: Vector2) -> void:
+	draw_circle(at + Vector2(0.8, 0.8), 3.2, Color(0, 0, 0, 0.6))
+	draw_circle(at, 3.0, TARNISH)
+	draw_circle(at - Vector2(0.8, 0.8), 1.2, TARNISH.lightened(0.35))
+
+
+## Cut into stone: a dark groove with a pale lip below it. A glyph that is
+## ready glows faintly from inside its groove.
+func _engrave(points: PackedVector2Array, fill: Color) -> void:
+	var lip := PackedVector2Array()
+	for p in points:
+		lip.append(p + Vector2(0.8, 1.0))
+	draw_polyline(lip, Color(0.6, 0.55, 0.5, 0.45), 2.2, true)
+	draw_polyline(points, Color(0.05, 0.04, 0.035), 2.4, true)
+	if fill.a > 0.0:
+		draw_polyline(points, fill, 1.4, true)
 
 
 func _arrow(points: PackedVector2Array, along: float, col: Color) -> void:
@@ -337,11 +427,6 @@ func _arrow(points: PackedVector2Array, along: float, col: Color) -> void:
 			draw_colored_polygon(PackedVector2Array([tip + dir * 4.0, tip - dir * 3.0 + side * 3.5, tip - dir * 3.0 - side * 3.5]), col)
 			return
 		want -= seg
-
-
-func _outlined_polyline(points: PackedVector2Array, col: Color, width: float) -> void:
-	draw_polyline(points, Color(0, 0, 0, 0.7), width + 2.5, true)
-	draw_polyline(points, col, width, true)
 
 
 func _text(pos: Vector2, text: String, fsize: int, col: Color) -> void:
@@ -397,15 +482,31 @@ func _make_outline() -> PackedVector2Array:
 
 
 func _spawn_embers() -> void:
-	var rot := deg_to_rad(-5.0)
-	for i in 46:
-		var v: Vector2 = _outline[randi() % _outline.size()]
+	for i in 24:
 		_embers.append({
-			"pos": _center + v.rotated(rot),
+			"pos": _sheet_point(),
 			"vel": Vector2(randf_range(-30, 30), randf_range(-70, -20)),
-			"life": randf_range(0.35, 0.8),
-			"color": Color(1.0, randf_range(0.35, 0.7), 0.1),
+			"life": randf_range(0.3, 0.7),
+			"color": Color(1.0, randf_range(0.35, 0.6), 0.1),
 		})
+
+
+func _spawn_ash() -> void:
+	_ash.append({
+		"pos": _sheet_point(),
+		"vel": Vector2(randf_range(-20, 20), randf_range(-45, -15)),
+		"life": randf_range(0.9, 1.6),
+		"size": randf_range(1.2, 2.6),
+		"spin": randf() * TAU,
+		"spin_v": randf_range(-6.0, 6.0),
+		"seed": randf() * 10.0,
+	})
+
+
+## A random point on the sheet's torn edge, in screen space.
+func _sheet_point() -> Vector2:
+	var v: Vector2 = _outline[randi() % _outline.size()]
+	return _sheet.position + (v * _sheet.scale).rotated(_sheet.rotation)
 
 
 # --- the ground sigil and aiming ring -------------------------------------------
@@ -427,7 +528,7 @@ func _ensure_3d() -> void:
 	_reticle_mat = _ground_mat.duplicate() as StandardMaterial3D
 	_reticle = MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.95
+	torus.inner_radius = 0.97
 	torus.outer_radius = 1.0
 	torus.rings = 48
 	_reticle.mesh = torus
@@ -468,12 +569,12 @@ func _update_3d() -> void:
 	if _ground == null or player == null or not is_instance_valid(player):
 		return
 	_ground.global_position = player.global_position + Vector3(0, 0.03, 0)
-	var c := Color(0.75, 0.18, 0.1, 0.55)
+	var c := Color(0.6, 0.12, 0.06, 0.4)
 	if mode == Mode.FADING:
 		c.a *= 1.0 - _mode_t / FADE_TIME
 	elif mode == Mode.PREPARED:
 		c = Spells.GLYPHS[glyph].color
-		c.a = 0.75 + 0.25 * sin(_t * 8.0)
+		c.a = 0.5 + 0.15 * sin(_t * 6.0)
 	elif _burn >= 0.0:
 		c = Spells.GLYPHS[glyph].color
 		c.a = 1.0 - _burn
@@ -487,7 +588,7 @@ func _update_3d() -> void:
 		_reticle.global_position = player.spell_target(glyph) + Vector3(0, 0.05, 0)
 		_reticle.scale = Vector3(r, 0.05, r) * (1.0 + 0.04 * sin(_t * 6.0))
 		var rc: Color = Spells.GLYPHS[glyph].color
-		rc.a = 0.55 + 0.2 * sin(_t * 6.0)
+		rc.a = 0.35 + 0.12 * sin(_t * 6.0)
 		_reticle_mat.albedo_color = rc
 
 

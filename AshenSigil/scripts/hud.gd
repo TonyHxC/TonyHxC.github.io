@@ -9,7 +9,7 @@ void fragment() {
 	vec2 uv = UV - 0.5;
 	float d = length(uv * vec2(1.0, 0.85));
 	float v = smoothstep(0.28, 0.78, d);
-	vec3 tint = mix(vec3(0.0), vec3(0.45, 0.0, 0.0), pain);
+	vec3 tint = mix(vec3(0.03, 0.018, 0.012), vec3(0.4, 0.0, 0.0), pain);
 	COLOR = vec4(tint, clamp(v * strength + pain * 0.35 * v, 0.0, 1.0));
 }
 """
@@ -23,6 +23,7 @@ var show_help := true
 
 var _root: Control
 var _vignette: ShaderMaterial
+var _leather: Texture2D
 var _pain := 0.0
 var _toast := ""
 var _toast_color := Color.WHITE
@@ -31,7 +32,8 @@ var _toast_t := 0.0
 
 func _ready() -> void:
 	layer = 10
-	font = ThemeDB.fallback_font
+	font = Look.font()
+	_leather = load(Look.TEX % ["brown_leather", "albedo"])
 	var vig := ColorRect.new()
 	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -84,29 +86,33 @@ func _on_draw() -> void:
 	var s := _root.size
 	var c := _root
 
-	# Bars, bottom-left.
+	# A worn leather panel trimmed in tarnished metal holds the bars and paper.
 	var bx := 28.0
 	var by := s.y - 64.0
-	_bar(Rect2(bx, by, 280, 16), player.health / player.max_health, Color(0.6, 0.05, 0.04))
-	_bar(Rect2(bx, by + 22, 280, 9), player.stamina / player.max_stamina, Color(0.75, 0.62, 0.25))
+	var panel := Rect2(bx - 14, by - 30, 384, 76)
+	c.draw_rect(panel.grow(3), Color(0, 0, 0, 0.55))
+	c.draw_texture_rect(_leather, panel, true, Color(0.42, 0.34, 0.28))
+	_metal_frame(panel)
+	_bar(Rect2(bx, by, 280, 14), player.health / player.max_health, Color(0.5, 0.04, 0.03))
+	_bar(Rect2(bx, by + 22, 280, 8), player.stamina / player.max_stamina, Color(0.58, 0.47, 0.2))
 	if player.winded_t > 0.0:
 		# Too winded to swing: flash the stamina bar so a dead click isn't a mystery.
-		c.draw_rect(Rect2(bx, by + 22, 280, 9).grow(3), Color(1.0, 0.25, 0.15, player.winded_t * 2.0), false, 2.0)
-	_text(Vector2(bx, by - 10), "%d / %d" % [ceili(player.health), int(player.max_health)], 14, Color(0.85, 0.75, 0.7))
+		c.draw_rect(Rect2(bx, by + 22, 280, 8).grow(3), Color(1.0, 0.25, 0.15, player.winded_t * 2.0), false, 2.0)
+	_text(Vector2(bx, by - 8), "%d / %d" % [ceili(player.health), int(player.max_health)], 15, Color(0.8, 0.7, 0.62))
 
 	# Paper stack beside the bars.
-	var px := bx + 304.0
+	var px := bx + 300.0
 	var sheets := mini(player.paper, 3)
 	for i in range(sheets - 1, -1, -1):
 		var o := Vector2(i * 3.0, -i * 3.0)
-		var r := Rect2(Vector2(px, by - 2) + o, Vector2(20, 26))
-		c.draw_rect(r, Color(0.84, 0.76, 0.58).darkened(0.12 * i))
-		c.draw_rect(r, Color(0.4, 0.28, 0.15), false, 1.0)
+		var r := Rect2(Vector2(px, by - 6) + o, Vector2(19, 25))
+		c.draw_rect(r, Color(0.78, 0.69, 0.52).darkened(0.14 * i))
+		c.draw_rect(r, Color(0.36, 0.24, 0.13), false, 1.0)
 	if sheets == 0:
-		c.draw_rect(Rect2(px, by - 2, 20, 26), Color(0.4, 0.28, 0.15, 0.6), false, 1.0)
-	var paper_col := Color(0.85, 0.79, 0.64) if player.paper > 0 else Color(0.7, 0.35, 0.3)
-	_text(Vector2(px + 32, by + 18), "×%d" % player.paper, 18, paper_col)
-	_text(Vector2(px + 32, by + 34), "Q", 11, Color(0.65, 0.6, 0.52))
+		c.draw_rect(Rect2(px, by - 6, 19, 25), Color(0.36, 0.24, 0.13, 0.6), false, 1.0)
+	var paper_col := Color(0.8, 0.73, 0.58) if player.paper > 0 else Color(0.66, 0.32, 0.26)
+	_text(Vector2(px + 30, by + 12), "×%d" % player.paper, 19, paper_col)
+	_text(Vector2(px + 30, by + 30), "Q", 12, Color(0.6, 0.55, 0.47))
 
 	# Wave, top centre.
 	_text_c(Vector2(0, 40), s.x, "Wave %d" % wave if wave > 0 else "", 26, Color(0.75, 0.12, 0.08))
@@ -134,7 +140,7 @@ func _on_draw() -> void:
 			"Q  sigil mode: draw anywhere, release, then click to cast   (Tab: sigil guides)",
 		]
 		for i in lines.size():
-			_text(Vector2(20, 28 + i * 18), lines[i], 13, Color(0.7, 0.66, 0.6, 0.85))
+			_text(Vector2(20, 28 + i * 19), lines[i], 14, Color(0.68, 0.63, 0.56, 0.85))
 
 	if player.is_dead():
 		c.draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.0, 0.0, 0.55))
@@ -143,10 +149,26 @@ func _on_draw() -> void:
 		_text_c(Vector2(0, s.y * 0.45 + 74), s.x, "Press R to rise again", 18, Color(0.85, 0.8, 0.7))
 
 
+## A sunken channel with a two-tone fill, so the bar reads as liquid in a groove.
 func _bar(r: Rect2, frac: float, color: Color) -> void:
-	_root.draw_rect(r.grow(2), Color(0.05, 0.03, 0.03, 0.85))
-	_root.draw_rect(Rect2(r.position, Vector2(r.size.x * clampf(frac, 0.0, 1.0), r.size.y)), color)
-	_root.draw_rect(r.grow(2), Color(0.35, 0.28, 0.2), false, 1.0)
+	_root.draw_rect(r.grow(2), Color(0.03, 0.02, 0.015, 0.92))
+	var fill := Rect2(r.position, Vector2(r.size.x * clampf(frac, 0.0, 1.0), r.size.y))
+	_root.draw_rect(fill, color)
+	_root.draw_rect(Rect2(fill.position, Vector2(fill.size.x, fill.size.y * 0.4)), color.lightened(0.18))
+	_root.draw_line(r.position + Vector2(-2, r.size.y + 2), r.end + Vector2(2, 2), Color(0.5, 0.44, 0.34, 0.5), 1.0)
+
+
+const TARNISH := Color(0.42, 0.37, 0.28)
+
+
+func _metal_frame(r: Rect2) -> void:
+	_root.draw_rect(r, TARNISH.darkened(0.3), false, 3.0)
+	_root.draw_line(r.position, Vector2(r.end.x, r.position.y), TARNISH.lightened(0.15), 1.0)
+	_root.draw_line(r.position, Vector2(r.position.x, r.end.y), TARNISH.lightened(0.05), 1.0)
+	for corner in [r.position + Vector2(5, 5), Vector2(r.end.x - 5, r.position.y + 5), Vector2(r.position.x + 5, r.end.y - 5), r.end - Vector2(5, 5)]:
+		_root.draw_circle(corner + Vector2(0.8, 0.8), 3.0, Color(0, 0, 0, 0.6))
+		_root.draw_circle(corner, 2.8, TARNISH)
+		_root.draw_circle(corner - Vector2(0.8, 0.8), 1.1, TARNISH.lightened(0.35))
 
 
 func _text(pos: Vector2, text: String, fsize: int, color: Color) -> void:

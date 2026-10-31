@@ -8,6 +8,7 @@ var failures := 0
 func _ready() -> void:
 	main = preload("res://main.tscn").instantiate()
 	add_child(main)
+	main._next_wave_in = INF  # no real waves: they'd attack the player mid-test
 	await _frames(5)
 	var canvas: Control = main.hud.glyph
 	_check(canvas.size == get_viewport().get_visible_rect().size,
@@ -96,7 +97,10 @@ func _test_sigil_mode() -> void:
 		ui.add_point(v + Vector2(400, 300))
 	ui.end_stroke()
 	_check(ui.mode == SigilUI.Mode.FADING and p.paper == start_paper - 1, "bad stroke fades and costs nothing")
-	await get_tree().create_timer(SigilUI.FADE_TIME * 1.5, true, false, true).timeout
+	var waited := 0
+	while ui.mode == SigilUI.Mode.FADING and waited < 600:
+		await _frames(1)
+		waited += 1
 	_check(ui.mode == SigilUI.Mode.READY, "can retry after a bad stroke")
 
 	var tri: PackedVector2Array = s["ward"][0]
@@ -174,6 +178,7 @@ func _test_swings() -> void:
 	_click(p, true)
 	_check(p.state != Fighter.State.WINDUP and p.winded_t > 0.0, "a click with no stamina flashes the stamina bar")
 	_click(p, false)
+	p._buffer_t = 0.0  # don't let that buffered click swing during the next test
 	p.stamina = p.max_stamina
 	await _frames(30)
 

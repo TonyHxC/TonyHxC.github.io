@@ -39,21 +39,30 @@ func _init() -> void:
 	weapon_damage = 24.0
 	weapon_reach = 1.7
 	weapon_length = 1.15
-	body_color = Color(0.16, 0.15, 0.17)
-	windup_glow = Color(1.0, 0.75, 0.35)
+	body_color = Color(0.45, 0.4, 0.36)
+	weapon_color = Color(0.5, 0.5, 0.52)
+	windup_glow = Color(1.0, 0.7, 0.35)
 
 
 func _dress() -> void:
-	var cloak := Color(0.1, 0.09, 0.1)
-	_part(_cone(0.42, 1.1, 0.26), Vector3(0.0, 0.8, 0.05), cloak)
-	_part(_cone(0.23, 0.42, 0.0), Vector3(0.0, 1.82, 0.02), cloak)
-	_glow_part(_box(Vector3(0.12, 0.18, 0.12)), Vector3(-0.34, 0.95, -0.05), Color(1.0, 0.7, 0.35), 4.0)
+	var cloak := Color(0.36, 0.31, 0.29)
+	_part(_cone(0.4, 1.12, 0.25), Vector3(0.0, 0.84, 0.06), cloak, true, cloth_texture)
+	_part(_cone(0.19, 0.36, 0.0), Vector3(0.0, 1.76, 0.02), cloak.darkened(0.2), true, cloth_texture)
+	# A caged lantern at the hip: rusted frame, small restrained flame.
+	_part(_box(Vector3(0.13, 0.19, 0.13)), Vector3(-0.36, 0.92, -0.04), Color(0.55, 0.5, 0.45), false, "rusty_metal_02")
+	_glow_part(_box(Vector3(0.08, 0.12, 0.14)), Vector3(-0.36, 0.92, -0.04), Color(1.0, 0.65, 0.3), 2.2)
 	var lantern := OmniLight3D.new()
-	lantern.light_color = Color(1.0, 0.72, 0.45)
-	lantern.light_energy = 1.7
-	lantern.omni_range = 9.0
-	lantern.omni_attenuation = 1.3
-	lantern.position = Vector3(0.0, 2.3, 0.0)
+	lantern.light_color = Color(1.0, 0.68, 0.4)
+	lantern.light_energy = 1.6
+	lantern.omni_range = 8.5
+	lantern.omni_attenuation = 1.6
+	lantern.shadow_enabled = true
+	# Held a little toward the camera, so the side of the hero we see is lit.
+	lantern.position = Vector3(0.7, 2.1, 0.7)
+	# The hero sits inside their own lantern light; let it pass through them so
+	# only the world around them throws shadows.
+	for mi in visual.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lantern.set_script(preload("res://scripts/flicker.gd"))
 	add_child(lantern)
 

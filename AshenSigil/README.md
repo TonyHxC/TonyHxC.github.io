@@ -42,6 +42,8 @@ malformed one burns you.
 - `scripts/spells.gd`, `scripts/spell_paper.gd`, `scripts/glyph_canvas.gd`: the sigil magic
 - `scripts/main.gd`: the arena and waves
 - `tests/smoke.tscn`: headless checks (`--headless --path . res://tests/smoke.tscn`)
+- `shaders/`: low-res retro finish, mud-and-cobble ground, burning parchment
+- `assets/`: CC0 Poly Haven textures and the OFL IM Fell English font (see `assets/CREDITS.md`)
 
 ## Web build
 
