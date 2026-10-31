@@ -19,6 +19,7 @@ const IDLE_POSE := Vector3(-0.35, -0.35, 0.0)
 const GUARD_POSE := Vector3(0.55, 1.2, 0.0)
 const GUARD_POS := Vector3(0.24, 1.4, -0.12)
 const PARRY_WINDOW := 0.22
+const HIT_FLASH := Color(1.0, 0.25, 0.2)
 const DODGE_TIME := 0.38
 
 @export var team := 0
@@ -37,6 +38,19 @@ const DODGE_TIME := 0.38
 @export var body_color := Color(0.3, 0.3, 0.32)
 @export var skin_color := Color(0.62, 0.52, 0.45)
 @export var radius := 0.35
+
+## Weapon handling (see Weapons.STATS): scales on the base cut timings, cost,
+## knockback, slash width and lunge, plus extra stun and the dodge's cost.
+var swing_time_mult := 1.0
+var recover_mult := 1.0
+var stamina_mult := 1.0
+var force_mult := 1.0
+var arc_mult := 1.0
+var lunge_mult := 1.0
+var stun_bonus := 0.0
+var dodge_cost := 22.0
+## The thrust becomes a full spin that strikes all around (the flail).
+var whirl := false
 
 var health := 0.0
 var stamina := 0.0
@@ -64,6 +78,10 @@ var _blade_prev := 0.0
 var _hit_list: Array = []
 var _flash := 0.0
 var _bob := 0.0
+var _burn_left := 0.0
+var _burn_dps := 0.0
+var _burn_by: Fighter
+var _burn_spark := 0.0
 
 
 func _ready() -> void:
@@ -112,6 +130,7 @@ func _build_body() -> void:
 	arm.rotation.x = PI / 2.0
 	arm.position.z = -0.22
 	var arm_mat := Look.cloth(cloth_texture, body_color) if cloth_texture != "" else Look.matte(body_color)
+	_glowable(arm_mat, HIT_FLASH)
 	arm.material_override = arm_mat
 	body_mats.append(arm_mat)
 	weapon_pivot.add_child(arm)
@@ -121,6 +140,7 @@ func _build_body() -> void:
 		weapon_mat = Look.matte(weapon_color)
 		weapon_mat.metallic = 0.6
 		weapon_mat.roughness = 0.55
+	_glowable(weapon_mat, windup_glow)
 	var blade := MeshInstance3D.new()
 	blade.mesh = _box(Vector3(0.055, 0.022, weapon_length))
 	blade.position.z = -(weapon_length * 0.5 + 0.55)
@@ -146,7 +166,7 @@ func _part(mesh: Mesh, pos: Vector3, color: Color, flashes := true, tex := "") -
 	var m := Look.cloth(tex, color) if tex != "" else Look.matte(color)
 	mi.material_override = m
 	if flashes:
-		body_mats.append(m)
+		body_mats.append(_glowable(m, HIT_FLASH))
 	visual.add_child(mi)
 	return mi
 
@@ -227,8 +247,24 @@ func opponents() -> Array[Fighter]:
 	return out
 
 
+func is_whirl() -> bool:
+	return whirl and swing_type == Swing.THRUST
+
+
+func swing_name() -> String:
+	return "Whirl" if is_whirl() else SWING_NAMES[swing_type]
+
+
+func swing_time() -> float:
+	return (0.5 if is_whirl() else SWING_TIME[swing_type]) * swing_time_mult
+
+
+func recover_time() -> float:
+	return RECOVER_TIME[swing_type] * recover_mult
+
+
 func swing_progress() -> float:
-	return clampf(state_time / SWING_TIME[swing_type], 0.0, 1.0)
+	return clampf(state_time / swing_time(), 0.0, 1.0)
 
 
 # --- frame ------------------------------------------------------------------
@@ -248,6 +284,9 @@ func _physics_process(delta: float) -> void:
 	if guarding:
 		guard_time += delta
 	_tick_state()
+	_tick_burn(delta)
+	if state == State.DEAD:
+		return
 	_tick_stamina(delta)
 	_turn(delta)
 	_move(delta)
@@ -270,7 +309,7 @@ func _tick_state() -> void:
 			if p >= 1.0:
 				_set_state(State.RECOVER)
 		State.RECOVER:
-			if state_time >= RECOVER_TIME[swing_type]:
+			if state_time >= recover_time():
 				_set_state(State.IDLE)
 		State.STAGGER:
 			if state_time >= stagger_left:
@@ -278,6 +317,28 @@ func _tick_state() -> void:
 		State.DODGE:
 			if state_time >= DODGE_TIME:
 				_set_state(State.IDLE)
+
+
+## Sets the fighter alight: it loses health steadily, without staggering.
+func ignite(seconds: float, dps: float, by: Fighter) -> void:
+	_burn_left = maxf(_burn_left, seconds)
+	_burn_dps = maxf(_burn_dps, dps)
+	_burn_by = by
+
+
+func _tick_burn(delta: float) -> void:
+	if _burn_left <= 0.0:
+		return
+	_burn_left -= delta
+	health -= _burn_dps * delta
+	_flash = maxf(_flash, 0.35)
+	_burn_spark -= delta
+	if _burn_spark <= 0.0:
+		_burn_spark = 0.12
+		Fx.sparks(global_position + Vector3(randf_range(-0.2, 0.2), randf_range(0.5, 1.6), randf_range(-0.2, 0.2)), Color(1.0, 0.5, 0.15), 3)
+	if health <= 0.0:
+		_burn_left = 0.0
+		die(Vector3.ZERO)
 
 
 func _tick_stamina(delta: float) -> void:
@@ -353,7 +414,7 @@ func _dead_physics(delta: float) -> void:
 ## Free to start a swing: idle, or in the last stretch of the previous swing's
 ## recovery, so chained attacks flow instead of waiting for a full stop.
 func can_attack() -> bool:
-	return state == State.IDLE or (state == State.RECOVER and state_time >= RECOVER_TIME[swing_type] * 0.6)
+	return state == State.IDLE or (state == State.RECOVER and state_time >= recover_time() * 0.6)
 
 
 func begin_windup(type: Swing) -> bool:
@@ -373,20 +434,21 @@ func release_swing(power: float) -> void:
 	if state != State.WINDUP:
 		return
 	swing_power = power
-	var cost := (10.0 + 8.0 * power) * (1.3 if swing_type == Swing.OVERHEAD else 1.0)
+	var cost := (10.0 + 8.0 * power) * (1.3 if swing_type == Swing.OVERHEAD or is_whirl() else 1.0) * stamina_mult
 	stamina = maxf(0.0, stamina - cost)
 	stamina_delay = 0.8
 	_hit_list.clear()
 	_set_state(State.SWING)
 	_blade_prev = _swing_pose(0.0).y
-	var lunge := (1.5 + 2.5 * power) * (1.7 if swing_type == Swing.THRUST else 1.0)
-	impulse += forward() * lunge
+	if not is_whirl():
+		var lunge := (1.5 + 2.5 * power) * (1.7 if swing_type == Swing.THRUST else 1.0) * lunge_mult
+		impulse += forward() * lunge
 
 
 func dodge(dir: Vector3) -> bool:
-	if not (state == State.IDLE or state == State.RECOVER) or stamina < 20.0:
+	if not (state == State.IDLE or state == State.RECOVER) or stamina < dodge_cost - 2.0:
 		return false
-	stamina -= 22.0
+	stamina -= dodge_cost
 	stamina_delay = 0.6
 	_set_state(State.DODGE)
 	invuln_left = 0.3
@@ -412,25 +474,41 @@ func stagger(seconds: float) -> void:
 # --- the swing --------------------------------------------------------------
 
 func _windup_pose(t: Swing) -> Vector3:
+	var a := 2.0 * arc_mult
 	match t:
-		Swing.SLASH_RL: return Vector3(0.25, -2.0, 0.3)
-		Swing.SLASH_LR: return Vector3(0.25, 2.0, -0.3)
+		Swing.SLASH_RL: return Vector3(0.25, -a, 0.3)
+		Swing.SLASH_LR: return Vector3(0.25, a, -0.3)
 		Swing.OVERHEAD: return Vector3(2.5, -0.15, 0.0)
+		Swing.THRUST:
+			if whirl:
+				return Vector3(0.3, 2.2, -0.4)
 	return Vector3(0.05, 0.0, 0.0)
 
 
 func _swing_pose(p: float) -> Vector3:
 	# Ease-out: fast through the target, heavy follow-through.
 	var e := 1.0 - pow(1.0 - p, 3.0)
+	var a := 2.0 * arc_mult
 	match swing_type:
-		Swing.SLASH_RL: return Vector3(0.1, lerpf(-2.0, 1.9, e), 0.3)
-		Swing.SLASH_LR: return Vector3(0.1, lerpf(2.0, -1.9, e), -0.3)
+		Swing.SLASH_RL: return Vector3(0.1, lerpf(-a, a * 0.95, e), 0.3)
+		Swing.SLASH_LR: return Vector3(0.1, lerpf(a, -a * 0.95, e), -0.3)
 		Swing.OVERHEAD: return Vector3(lerpf(2.5, -0.7, e), -0.1, 0.0)
+		Swing.THRUST:
+			if whirl:
+				return Vector3(0.15, 1.5, -0.2)  # arm held out; the body turns (see _animate)
 	return Vector3(0.05, 0.0, 0.0)
 
 
 ## Hits anything the blade swept past since the last frame.
 func _sweep(p: float) -> void:
+	if is_whirl():
+		# One full turn: anything in reach is struck once along the way.
+		if p >= 0.1 and p <= 0.9:
+			for o in opponents():
+				if not o in _hit_list and flat_dist(o) <= weapon_reach + o.radius:
+					_hit_list.append(o)
+					_deliver(o)
+		return
 	var yaw := _swing_pose(p).y
 	var lo := minf(_blade_prev, yaw) - 0.2
 	var hi := maxf(_blade_prev, yaw) + 0.2
@@ -454,12 +532,13 @@ func _sweep(p: float) -> void:
 
 
 func _deliver(o: Fighter) -> void:
-	var dmg: float = weapon_damage * swing_power * SWING_DAMAGE[swing_type]
 	var dir := o.global_position - global_position
 	dir.y = 0.0
 	dir = dir.normalized()
-	var force := (2.5 + 3.5 * swing_power) * (1.5 if swing_type == Swing.OVERHEAD else 1.0)
-	var result := o.take_hit(self, dmg, dir, force, 0.2 + 0.35 * swing_power)
+	var dmg := _strike_damage(o, weapon_damage * swing_power * SWING_DAMAGE[swing_type])
+	var force := (2.5 + 3.5 * swing_power) * (1.5 if swing_type == Swing.OVERHEAD else 1.0) * force_mult
+	var result := o.take_hit(self, dmg, dir, force, 0.2 + 0.35 * swing_power + stun_bonus)
+	_on_strike(o, result)
 	match result:
 		"parried":
 			stagger(1.0)
@@ -472,6 +551,16 @@ func _deliver(o: Fighter) -> void:
 		"hit":
 			Game.hitstop(0.04 + 0.05 * swing_power)
 			Game.shake(0.2 + 0.25 * swing_power)
+
+
+## Override to change a blow's damage just before it lands (backstabs, ripostes).
+func _strike_damage(_o: Fighter, dmg: float) -> float:
+	return dmg
+
+
+## Override to react to a blow you landed; result is what take_hit returned.
+func _on_strike(_o: Fighter, _result: String) -> void:
+	pass
 
 
 ## Returns "hit", "blocked", "parried", "dodged" or "none".
@@ -532,11 +621,14 @@ func _animate(delta: float) -> void:
 		State.SWING:
 			var p := swing_progress()
 			weapon_pivot.rotation = _swing_pose(p)
-			pos.z += lerpf(0.35, -0.6, 1.0 - pow(1.0 - p, 3.0)) if swing_type == Swing.THRUST else 0.0
+			if is_whirl():
+				visual.rotation.y += TAU * (1.0 - pow(1.0 - p, 2.0))
+			elif swing_type == Swing.THRUST:
+				pos.z += lerpf(0.35, -0.6, 1.0 - pow(1.0 - p, 3.0))
 			weapon_pivot.position = pos
 		State.WINDUP:
 			pose = _windup_pose(swing_type)
-			if swing_type == Swing.THRUST:
+			if swing_type == Swing.THRUST and not whirl:
 				pos.z += 0.35
 		_:
 			if guarding:
@@ -560,16 +652,22 @@ func _animate(delta: float) -> void:
 	visual.position.y = lerpf(visual.position.y, absf(sin(_bob)) * 0.07 if speed > 0.4 else 0.0, k)
 
 
+## Only brightness changes here. Emission stays enabled from the start
+## (see _glowable): switching it on mid-fight is a different shader variant,
+## and compiling it on the first swing or hit is what made them hitch.
 func _update_glow(delta: float) -> void:
 	if _flash > 0.0:
 		_flash = maxf(0.0, _flash - delta * 6.0)
 		for m in body_mats:
-			m.emission_enabled = _flash > 0.0
-			m.emission = Color(1.0, 0.25, 0.2)
 			m.emission_energy_multiplier = _flash * 2.0
 	var glow := 0.0
 	if state == State.WINDUP:
 		glow = 0.6 + 0.4 * sin(state_time * 30.0) if team != 0 else minf(state_time / 0.7, 1.0)
-	weapon_mat.emission_enabled = glow > 0.01
-	weapon_mat.emission = windup_glow
 	weapon_mat.emission_energy_multiplier = glow * 2.5
+
+
+static func _glowable(m: StandardMaterial3D, color: Color) -> StandardMaterial3D:
+	m.emission_enabled = true
+	m.emission = color
+	m.emission_energy_multiplier = 0.0
+	return m

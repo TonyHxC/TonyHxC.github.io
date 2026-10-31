@@ -1,6 +1,9 @@
 extends Node
 ## Headless smoke test: godot --headless --path . res://tests/smoke.tscn
 
+## The mouse drag that picks each cut, in Fighter.Swing order.
+const DRAGS := [Vector2(-100, 0), Vector2(100, 0), Vector2(0, 100), Vector2(0, -100)]
+
 var main: Node3D
 var failures := 0
 
@@ -9,16 +12,72 @@ func _ready() -> void:
 	main = preload("res://main.tscn").instantiate()
 	add_child(main)
 	main._next_wave_in = INF  # no real waves: they'd attack the player mid-test
+	if not main.ready_to_play:
+		await main.warmed_up
+	_check(get_tree().get_nodes_in_group("fighters").size() == 1 and Fx._decals.is_empty(),
+		"loading warm-up leaves no creatures or decals behind")
 	await _frames(5)
 	var canvas: Control = main.hud.glyph
 	_check(canvas.size == get_viewport().get_visible_rect().size,
 		"sigil overlay spans the screen (%s)" % canvas.size)
 	_test_recognizer()
+	await _test_run_start()
 	await _test_sigil_mode()
 	await _test_swings()
+	await _test_traits()
+	await _test_imbue()
 	await _test_spells()
 	print("SMOKE: %s (%d failures)" % ["PASS" if failures == 0 else "FAIL", failures])
 	get_tree().quit(failures)
+
+
+## The run opens on the weapon pick, then the mask; the hunter gears up and fights.
+func _test_run_start() -> void:
+	var p: Player = main.player
+	var rs: RunStart = main.hud.run_start
+	_check(rs.is_open() and rs.phase == RunStart.Phase.PICK and not p.ready_to_fight,
+		"the run opens on the weapon pick")
+	var shown := 0
+	for k in p.model._weapon_nodes:
+		for n in p.model._weapon_nodes[k]:
+			shown += 1 if n.visible else 0
+	_check(shown == 6, "the hunter carries the whole kit before choosing (%d pieces)" % shown)
+	rs.pick("axe")
+	_check(p.weapon == "axe" and rs.phase == RunStart.Phase.INK, "picking the axe takes it up and moves to the mask")
+	var hidden_ok := true
+	for k in p.model._weapon_nodes:
+		for n in p.model._weapon_nodes[k]:
+			if n.visible != (k == "axe"):
+				hidden_ok = false
+	_check(hidden_ok, "the other weapons are put away")
+	var scribble := PackedVector2Array()
+	for i in 40:
+		scribble.append(Vector2(randf_range(200, 500), randf_range(200, 500)))
+	rs.begin_stroke(scribble[0])
+	for v in scribble:
+		rs.add_point(v)
+	rs.end_stroke()
+	_check(rs.ink == RunStart.Ink.FADING, "a scribble won't take on the mask")
+	await _frames(40)
+	var tri := PackedVector2Array()
+	for v in Spells.shapes()["ward"][0]:
+		tri.append(v * 100.0)
+	var pts := _wobbly(tri)
+	rs.begin_stroke(pts[0])
+	for v in pts:
+		rs.add_point(v)
+	rs.end_stroke()
+	_check(rs.ink == RunStart.Ink.TAKEN and rs.glyph == "ward", "a triangle inks Repulsion on the mask")
+	rs.confirm()
+	_check(not rs.is_open() and p.mask_glyph == "ward", "putting on the mask closes the screen")
+	var waited := 0
+	while not p.ready_to_fight and waited < 600:
+		await _frames(1)
+		waited += 1
+	_check(p.ready_to_fight and p.model.armed and p.model.rig.mask_on,
+		"mask on and axe drawn, ready to fight (%.1fs)" % (waited / 60.0))
+	_check(main._next_wave_in < INF, "the waves are coming")
+	main._next_wave_in = INF
 
 
 func _check(ok: bool, what: String) -> void:
@@ -136,24 +195,28 @@ func _spawn_dummy(offset: Vector3) -> Enemy:
 func _test_swings() -> void:
 	var p: Player = main.player
 	# The mouse drag held during wind-up is what picks the cut.
-	var drags := [Vector2(-100, 0), Vector2(100, 0), Vector2(0, 100), Vector2(0, -100)]
-	for type in [Fighter.Swing.SLASH_RL, Fighter.Swing.SLASH_LR, Fighter.Swing.OVERHEAD, Fighter.Swing.THRUST]:
-		var e := _spawn_dummy(Vector3(0, 0, -1.4))
-		await _frames(2)
-		p.facing_angle = 0.0
-		p.desired_facing = 0.0
-		p.stamina = p.max_stamina
-		p.state = Fighter.State.IDLE
-		var before := e.health
-		p.begin_windup(type)
-		p._drag = drags[type]
-		await _frames(20)
-		_check(p.swing_type == type, "drag selects %s" % Fighter.SWING_NAMES[type])
-		p.release_swing(1.0)
-		await _frames(40)
-		_check(e.health < before, "%s hits (%.0f -> %.0f)" % [Fighter.SWING_NAMES[type], before, e.health])
-		e.queue_free()
-		await _frames(2)
+	for w in Weapons.ORDER:
+		p.equip(w)
+		for type in [Fighter.Swing.SLASH_RL, Fighter.Swing.SLASH_LR, Fighter.Swing.OVERHEAD, Fighter.Swing.THRUST]:
+			var e := _spawn_dummy(Vector3(0, 0, -1.4))
+			await _frames(2)
+			p.global_position.y = 0.0
+			p.facing_angle = 0.0
+			p.desired_facing = 0.0
+			p.stamina = p.max_stamina
+			p.state = Fighter.State.IDLE
+			var before := e.health
+			p.begin_windup(type)
+			p._drag = DRAGS[type]
+			await _frames(20)
+			var cut := "%s %s" % [w, p.swing_name()]
+			_check(p.swing_type == type, "drag selects %s" % cut)
+			p.release_swing(1.0)
+			await _frames(70)
+			_check(e.health < before, "%s hits (%.0f -> %.0f)" % [cut, before, e.health])
+			e.queue_free()
+			await _frames(2)
+	p.equip("axe")
 
 	# A click while still recovering is remembered and swings as soon as it can.
 	p.stamina = p.max_stamina
@@ -198,6 +261,99 @@ func _test_swings() -> void:
 	foe.queue_free()
 	Input.action_release("guard")
 	await _frames(2)
+
+
+## Swings at a dummy standing in front and returns the damage dealt.
+func _strike(p: Player, e: Enemy, type := Fighter.Swing.SLASH_RL) -> float:
+	await _frames(2)
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.facing_angle = p.yaw_to(e.global_position)
+	p.desired_facing = p.facing_angle
+	var before := e.health
+	p.begin_windup(type)
+	p._drag = DRAGS[type]
+	await _frames(10)
+	p.release_swing(1.0)
+	await _frames(70)
+	return before - e.health
+
+
+func _test_traits() -> void:
+	var p: Player = main.player
+	# The dagger strikes three times as hard from behind.
+	p.equip("dagger")
+	var front := _spawn_dummy(Vector3(0, 0, -1.2))
+	front.facing_angle = PI  # facing the hunter
+	front.desired_facing = PI
+	var plain := await _strike(p, front)
+	front.queue_free()
+	var back := _spawn_dummy(Vector3(0, 0, -1.2))
+	back.facing_angle = 0.0  # its back to the hunter
+	back.desired_facing = 0.0
+	back.stagger(5.0)
+	var stab := await _strike(p, back)
+	back.queue_free()
+	_check(stab > plain * 2.0, "dagger backstab (%.0f vs %.0f)" % [stab, plain])
+
+	# The flail's whirl strikes what's behind you.
+	p.equip("flail")
+	var behind := _spawn_dummy(Vector3(0, 0, 1.5))
+	await _frames(2)
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.facing_angle = 0.0
+	p.desired_facing = 0.0
+	var hp := behind.health
+	p.begin_windup(Fighter.Swing.THRUST)
+	p._drag = DRAGS[Fighter.Swing.THRUST]
+	await _frames(10)
+	p.release_swing(1.0)
+	await _frames(70)
+	_check(behind.health < hp, "flail whirl strikes behind (%.0f -> %.0f)" % [hp, behind.health])
+	behind.queue_free()
+
+	# Burning keeps hurting without staggering.
+	var burner := _spawn_dummy(Vector3(3, 0, 0))
+	await _frames(2)
+	burner.state = Fighter.State.IDLE
+	hp = burner.health
+	burner.ignite(2.0, 10.0, p)
+	await _frames(60)
+	_check(burner.health < hp - 5.0 and burner.state != Fighter.State.STAGGER, "burning hurts over time (%.0f -> %.0f)" % [hp, burner.health])
+	burner.queue_free()
+	await _frames(2)
+
+
+## Every weapon with every sigil: E readies it, the next blow releases it.
+func _test_imbue() -> void:
+	var p: Player = main.player
+	for w in Weapons.ORDER:
+		p.equip(w)
+		for g in ["ember", "storm", "ward"]:
+			p.set_mask(g, 1.0)
+			p.imbue_cd = 0.0
+			p.imbue_armed = false
+			p.invuln_left = 0.0
+			var start := p.global_position
+			var e := _spawn_dummy(Vector3(0, 0, -1.3))
+			var other := _spawn_dummy(Vector3(1.6, 0, -2.4))
+			var ok := p.ready_imbue() and p.imbue_armed
+			var hp := e.health + other.health
+			await _strike(p, e)
+			var dealt := hp - maxf(e.health, 0.0) - maxf(other.health, 0.0)
+			var title: String = Imbue.info(w, g).title
+			_check(ok and not p.imbue_armed and p.imbue_cd > 0.0 and dealt > 0.0,
+				"%s + %s: %s fires (%.0f dealt)" % [w, g, title, dealt])
+			e.queue_free()
+			other.queue_free()
+			p.global_position = start
+			p.health = p.max_health
+			await _frames(30)
+	_check(not p.ready_imbue(), "E does nothing while the mask is cooling")
+	p.equip("axe")
+	p.set_mask("ward", 1.0)
+	p.imbue_cd = 0.0
 
 
 func _test_spells() -> void:

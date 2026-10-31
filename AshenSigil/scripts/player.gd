@@ -2,7 +2,7 @@ class_name Player
 extends Fighter
 ## Hold LMB to wind up, drag the mouse while holding to pick the cut,
 ## release to swing. RMB guards (early guard = parry), Space dodges,
-## Q opens the parchment to ink a sigil.
+## Q opens the parchment to ink a sigil, E readies the mask's power.
 
 signal paper_changed(count: int)
 signal glyph_requested
@@ -24,6 +24,17 @@ var glyph_open := false
 var facing_locked := false
 ## > 0 while the HUD should flash the stamina bar: a swing was refused for lack of it.
 var winded_t := 0.0
+## False until the run starts: the weapon is chosen, the mask on, the weapon drawn.
+var ready_to_fight := false
+var model: HunterModel
+var weapon := ""
+## The sigil inked on the mask, its strength, and the state of its power.
+var mask_glyph := ""
+var mask_power := 0.0
+var imbue_armed := false
+var imbue_cd := 0.0
+## > 0 after a parry: the sword's next blow is a riposte.
+var riposte_t := 0.0
 
 var _drag := Vector2.ZERO
 var _combo_flip := false
@@ -36,21 +47,67 @@ func _init() -> void:
 	team = 0
 	max_health = 120.0
 	move_speed = 4.8
-	weapon_damage = 24.0
-	weapon_reach = 1.7
-	weapon_length = 1.15
-	body_color = Color(0.45, 0.4, 0.36)
-	weapon_color = Color(0.5, 0.5, 0.52)
 	windup_glow = Color(1.0, 0.7, 0.35)
+	equip("sword")
+
+
+## The hunter model from drex.glb. The weapon pivot stays: it's an invisible
+## guide that the ArmRig aims the real arm along.
+func _build_body() -> void:
+	visual = Node3D.new()
+	visual.name = "Visual"
+	add_child(visual)
+	model = HunterModel.new()
+	visual.add_child(model)
+	model.build(HIT_FLASH, windup_glow)
+	body_mats = model.body_mats
+	weapon_mat = model.weapon_mat
+	weapon_pivot = Node3D.new()
+	weapon_pivot.position = WEAPON_POS
+	weapon_pivot.rotation = IDLE_POSE
+	visual.add_child(weapon_pivot)
+	model.rig.pivot = weapon_pivot
+	model.set_weapon("")
+	_dress()
+
+
+## Takes up one of Weapons.ORDER: its handling, and the model puts the rest away.
+func equip(kind: String) -> void:
+	weapon = kind
+	var s: Dictionary = Weapons.STATS[kind]
+	weapon_damage = s.damage
+	weapon_reach = s.reach
+	swing_time_mult = s.time
+	recover_mult = s.recover
+	stamina_mult = s.stamina
+	force_mult = s.force
+	arc_mult = s.arc
+	lunge_mult = s.lunge
+	stun_bonus = s.stun
+	dodge_cost = s.dodge
+	whirl = kind == "flail"
+	if model:
+		model.set_weapon(kind)
+
+
+func set_mask(glyph: String, power: float) -> void:
+	mask_glyph = glyph
+	mask_power = power
+	model.mask_mat.emission = Spells.GLYPHS[glyph].color
+
+
+## Puts the mask on, draws the weapon, and is ready to fight. instant skips
+## the animations (tests).
+func start_run(instant := false) -> void:
+	if not instant:
+		await model.play_action("MaskOn")
+		await model.play_action("Draw_" + weapon.capitalize())
+	model.rig.mask_on = true
+	model.armed = true
+	ready_to_fight = true
 
 
 func _dress() -> void:
-	var cloak := Color(0.36, 0.31, 0.29)
-	_part(_cone(0.4, 1.12, 0.25), Vector3(0.0, 0.84, 0.06), cloak, true, cloth_texture)
-	_part(_cone(0.19, 0.36, 0.0), Vector3(0.0, 1.76, 0.02), cloak.darkened(0.2), true, cloth_texture)
-	# A caged lantern at the hip: rusted frame, small restrained flame.
-	_part(_box(Vector3(0.13, 0.19, 0.13)), Vector3(-0.36, 0.92, -0.04), Color(0.55, 0.5, 0.45), false, "rusty_metal_02")
-	_glow_part(_box(Vector3(0.08, 0.12, 0.14)), Vector3(-0.36, 0.92, -0.04), Color(1.0, 0.65, 0.3), 2.2)
 	var lantern := OmniLight3D.new()
 	lantern.light_color = Color(1.0, 0.68, 0.4)
 	lantern.light_energy = 1.6
@@ -68,6 +125,13 @@ func _dress() -> void:
 
 
 func _think(delta: float) -> void:
+	if not ready_to_fight:
+		# Picking a weapon, inking the mask, gearing up: face the camera and wait.
+		move_input = Vector3.ZERO
+		desired_facing = -0.75 * PI
+		return
+	imbue_cd = maxf(0.0, imbue_cd - delta)
+	riposte_t = maxf(0.0, riposte_t - delta)
 	_update_aim()
 	var iv := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	move_input = CAM_RIGHT * iv.x + CAM_FWD * iv.y
@@ -93,7 +157,10 @@ func _think(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if is_dead():
+	if is_dead() or not ready_to_fight:
+		return
+	if event.is_action_pressed("imbue"):
+		ready_imbue()
 		return
 	if glyph_open:
 		# Sigil mode owns the mouse; you can still dodge out of trouble.
@@ -140,6 +207,52 @@ func _release() -> void:
 	_combo_flip = not _combo_flip
 
 
+## E: wakes the mask's sigil in the weapon; the next blow that lands releases it.
+func ready_imbue() -> bool:
+	if mask_glyph == "" or imbue_armed:
+		return false
+	if imbue_cd > 0.0:
+		Game.toast("The mask is still cooling.", Color(0.7, 0.6, 0.55))
+		return false
+	imbue_armed = true
+	Fx.sparks(global_position + Vector3(0, 1.75, 0) + forward() * 0.15, Spells.GLYPHS[mask_glyph].color, 14)
+	return true
+
+
+func imbue_info() -> Dictionary:
+	return Imbue.info(weapon, mask_glyph) if mask_glyph != "" else {}
+
+
+func _strike_damage(o: Fighter, dmg: float) -> float:
+	if weapon == "dagger":
+		var from_o := global_position - o.global_position
+		from_o.y = 0.0
+		if o.forward().dot(from_o.normalized()) < -0.3:
+			Fx.sparks(o.global_position + Vector3(0, 1.2, 0), Color(1.0, 0.2, 0.1), 16)
+			Game.toast("Backstab", Color(0.9, 0.3, 0.2))
+			return dmg * 3.0
+	if weapon == "sword" and riposte_t > 0.0:
+		riposte_t = 0.0
+		Fx.sparks(o.global_position + Vector3(0, 1.2, 0), Color(1.0, 0.85, 0.4), 16)
+		Game.toast("Riposte", Color(1.0, 0.85, 0.5))
+		return dmg * 2.0
+	return dmg
+
+
+func _on_strike(o: Fighter, result: String) -> void:
+	if imbue_armed and (result == "hit" or result == "blocked"):
+		imbue_armed = false
+		imbue_cd = Imbue.COOLDOWN
+		Imbue.unleash(weapon, mask_glyph, mask_power, self, o)
+
+
+func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: float, can_block := true) -> String:
+	var result := super.take_hit(attacker, dmg, dir, force, stun, can_block)
+	if result == "parried":
+		riposte_t = 1.5
+	return result
+
+
 func charge() -> float:
 	return clampf(state_time / FULL_CHARGE, 0.0, 1.0) if state == State.WINDUP else 0.0
 
@@ -166,6 +279,36 @@ func cast_glyph(glyph: String, power: float) -> void:
 	var paper_node := SpellPaper.new()
 	paper_node.setup(glyph, power, self, hand, spell_target(glyph))
 	Game.world.add_child(paper_node)
+
+
+func _animate(delta: float) -> void:
+	super._animate(delta)
+	visual.position.y = 0.0  # the walk cycle has its own bob
+	var rig := model.rig
+	var aiming := model.armed and (state == State.WINDUP or state == State.SWING or state == State.RECOVER or guarding)
+	rig.aim = move_toward(rig.aim, 1.0 if aiming else 0.0, delta * (9.0 if aiming else 4.0))
+	rig.bend = clampf((weapon_pivot.position.z - WEAPON_POS.z) / 0.35, 0.0, 1.0)
+	var flung := 0.0
+	match state:
+		State.SWING: flung = 1.0
+		State.WINDUP: flung = 0.5
+	rig.spin = flung
+	model.update_locomotion(Vector2(move_vel.x, move_vel.z).length())
+
+
+## While the mask's power is ready the weapon burns in its sigil's colour, and
+## the mask glows faintly whenever it can be woken.
+func _update_glow(delta: float) -> void:
+	super._update_glow(delta)
+	var t := Time.get_ticks_msec() / 1000.0
+	if imbue_armed:
+		weapon_mat.emission = Spells.GLYPHS[mask_glyph].color
+		weapon_mat.emission_energy_multiplier = 1.6 + 0.8 * sin(t * 9.0)
+	else:
+		weapon_mat.emission = windup_glow
+	if model.mask_mat and mask_glyph != "":
+		var lit := 1.4 if imbue_armed else (0.35 + 0.2 * sin(t * 2.5) if imbue_cd <= 0.0 else 0.0)
+		model.mask_mat.emission_energy_multiplier = lit
 
 
 func _update_aim() -> void:

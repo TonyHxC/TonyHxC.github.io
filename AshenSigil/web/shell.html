@@ -231,6 +231,9 @@ body {
 const GODOT_CONFIG = $GODOT_CONFIG;
 const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
 const engine = new Engine(GODOT_CONFIG);
+const gameReady = new Promise((resolve) => {
+	window.ashenReady = resolve;
+});
 
 (function () {
 	const statusOverlay = document.getElementById('status');
@@ -454,6 +457,11 @@ const engine = new Engine(GODOT_CONFIG);
 			},
 		}).then(() => {
 			inkTo(1);
+			statusLine.textContent = 'Waking the dead…';
+			// The game warms up its effects behind this screen, then calls
+			// window.ashenReady(). Don't wait forever if that never comes.
+			return Promise.race([gameReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
+		}).then(() => {
 			setStatusMode('hidden');
 		}, displayFailureNotice);
 	}

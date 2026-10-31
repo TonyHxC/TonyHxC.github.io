@@ -230,9 +230,12 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":18924056,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":20251096,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
+const gameReady = new Promise((resolve) => {
+	window.ashenReady = resolve;
+});
 
 (function () {
 	const statusOverlay = document.getElementById('status');
@@ -456,6 +459,11 @@ const engine = new Engine(GODOT_CONFIG);
 			},
 		}).then(() => {
 			inkTo(1);
+			statusLine.textContent = 'Waking the dead…';
+			// The game warms up its effects behind this screen, then calls
+			// window.ashenReady(). Don't wait forever if that never comes.
+			return Promise.race([gameReady, new Promise((resolve) => setTimeout(resolve, 15000))]);
+		}).then(() => {
 			setStatusMode('hidden');
 		}, displayFailureNotice);
 	}

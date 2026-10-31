@@ -60,6 +60,7 @@ func _setup_input() -> void:
 	_key("move_right", [KEY_D, KEY_RIGHT])
 	_key("dodge", [KEY_SPACE])
 	_key("glyph", [KEY_Q])
+	_key("imbue", [KEY_E])
 	_key("restart", [KEY_R])
 	_key("help", [KEY_H])
 	_key("sigil_help", [KEY_TAB])

@@ -16,6 +16,7 @@ void fragment() {
 
 var player: Player
 var glyph: Control
+var run_start: RunStart
 var font: Font
 var wave := 0
 var kills := 0
@@ -52,6 +53,8 @@ func _ready() -> void:
 
 	glyph = SigilUI.new()
 	add_child(glyph)
+	run_start = RunStart.new()
+	add_child(run_start)
 
 
 func bind(p: Player) -> void:
@@ -85,6 +88,8 @@ func _on_draw() -> void:
 		return
 	var s := _root.size
 	var c := _root
+	if not player.ready_to_fight and not player.is_dead():
+		return  # the start screens have the floor
 
 	# A worn leather panel trimmed in tarnished metal holds the bars and paper.
 	var bx := 28.0
@@ -113,6 +118,8 @@ func _on_draw() -> void:
 	var paper_col := Color(0.8, 0.73, 0.58) if player.paper > 0 else Color(0.66, 0.32, 0.26)
 	_text(Vector2(px + 30, by + 12), "×%d" % player.paper, 19, paper_col)
 	_text(Vector2(px + 30, by + 30), "Q", 12, Color(0.6, 0.55, 0.47))
+	if player.ready_to_fight:
+		_mask_panel(Rect2(panel.end.x + 14, panel.position.y, 250, panel.size.y))
 
 	# Wave, top centre.
 	_text_c(Vector2(0, 40), s.x, "Wave %d" % wave if wave > 0 else "", 26, Color(0.75, 0.12, 0.08))
@@ -123,21 +130,22 @@ func _on_draw() -> void:
 		var w := 180.0
 		var r := Rect2((s.x - w) * 0.5, s.y - 120, w, 6)
 		_bar(r, player.charge(), Color(1.0, 0.75, 0.35))
-		_text_c(Vector2(0, s.y - 128), s.x, Fighter.SWING_NAMES[player.swing_type], 18, Color(1.0, 0.85, 0.6))
+		_text_c(Vector2(0, s.y - 128), s.x, player.swing_name(), 18, Color(1.0, 0.85, 0.6))
 
 	if _toast_t > 0.0:
 		var col := _toast_color
 		col.a = clampf(_toast_t, 0.0, 1.0)
 		_text_c(Vector2(0, s.y * 0.28), s.x, _toast, 22, col)
 
-	if show_help:
+	if show_help and player.ready_to_fight:
 		var lines := [
 			"WASD  move          Mouse  aim",
-			"Hold LMB  wind up   drag while holding: <- -> slash, down overhead, up thrust",
+			"Hold LMB  wind up   drag while holding: <- -> slash, down overhead, up %s" % ("whirl" if player.whirl else "thrust"),
 			"Release  swing      longer hold = heavier, more stamina",
 			"RMB  guard (tap just before a hit to parry)",
 			"Space  dodge        Wheel  zoom         H  hide help",
 			"Q  sigil mode: draw anywhere, release, then click to cast   (Tab: sigil guides)",
+			"E  wake the mask's power, then land a blow to release it",
 		]
 		for i in lines.size():
 			_text(Vector2(20, 28 + i * 19), lines[i], 14, Color(0.68, 0.63, 0.56, 0.85))
@@ -147,6 +155,40 @@ func _on_draw() -> void:
 		_text_c(Vector2(0, s.y * 0.45), s.x, "YOU HAVE FALLEN", 52, Color(0.7, 0.06, 0.04))
 		_text_c(Vector2(0, s.y * 0.45 + 44), s.x, "Wave %d   %d slain" % [wave, kills], 18, Color(0.75, 0.7, 0.65))
 		_text_c(Vector2(0, s.y * 0.45 + 74), s.x, "Press R to rise again", 18, Color(0.85, 0.8, 0.7))
+
+
+## The weapon, the sigil on the mask and the state of its power (E).
+func _mask_panel(r: Rect2) -> void:
+	var c := _root
+	c.draw_rect(r.grow(3), Color(0, 0, 0, 0.55))
+	c.draw_texture_rect(_leather, r, true, Color(0.42, 0.34, 0.28))
+	_metal_frame(r)
+	var info := player.imbue_info()
+	var col: Color = Spells.GLYPHS[player.mask_glyph].color if player.mask_glyph != "" else Color.WHITE
+	# The sigil, small, as it's inked on the mask.
+	var mid := r.position + Vector2(30, r.size.y * 0.5)
+	c.draw_circle(mid, 21.0, Color(0.82, 0.79, 0.72))
+	c.draw_arc(mid, 21.0, 0.0, TAU, 32, Color(0.3, 0.24, 0.18), 1.5, true)
+	if player.mask_glyph != "":
+		var pts := PackedVector2Array()
+		for v in Spells.shapes()[player.mask_glyph][0]:
+			pts.append(mid + v * 12.0)
+		var lit := player.imbue_armed or player.imbue_cd <= 0.0
+		c.draw_polyline(pts, col.darkened(0.4) if lit else Color(0.25, 0.2, 0.18), 2.4, true)
+	var x := r.position.x + 62.0
+	_text(Vector2(x, r.position.y + 22), Weapons.STATS[player.weapon].title, 15, Color(0.8, 0.7, 0.62))
+	if info.is_empty():
+		return
+	_text(Vector2(x, r.position.y + 42), info.title, 17, col)
+	var line := Rect2(x, r.position.y + 54, r.end.x - x - 40.0, 6)
+	if player.imbue_armed:
+		var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 110.0)
+		_text(Vector2(x, r.position.y + 66), "Readied: land a blow", 13, Color(col, pulse))
+	elif player.imbue_cd > 0.0:
+		_bar(line, 1.0 - player.imbue_cd / Imbue.COOLDOWN, col.darkened(0.4))
+	else:
+		_text(Vector2(x, r.position.y + 66), "Ready", 13, Color(0.8, 0.73, 0.58))
+	_text(Vector2(r.end.x - 26, r.position.y + 66), "E", 13, Color(0.6, 0.55, 0.47))
 
 
 ## A sunken channel with a two-tone fill, so the bar reads as liquid in a groove.

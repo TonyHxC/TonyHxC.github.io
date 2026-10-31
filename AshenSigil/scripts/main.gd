@@ -2,16 +2,23 @@ extends Node3D
 ## Prototype arena: a ruined graveyard courtyard lit by braziers, and waves of
 ## the dead. Builds everything in code so the scene file stays trivial.
 
+signal warmed_up
+
 const HALF := 17.0
+## Camera size while choosing (close on the hunter) and in the fight.
+const START_ZOOM := 7.0
+const FIGHT_ZOOM := 15.0
 
 var player: Player
+var ready_to_play := false
 var camera: Camera3D
 var hud: CanvasLayer
 var rng := RandomNumberGenerator.new()
 
 var wave := 0
 var alive: Array[Enemy] = []
-var _next_wave_in := 2.5
+## No waves until the run has started (weapon chosen, mask on).
+var _next_wave_in := INF
 
 var _wall: StandardMaterial3D
 var _stone: StandardMaterial3D
@@ -40,7 +47,80 @@ func _ready() -> void:
 	hud.glyph.cast.connect(_on_glyph_cast)
 	hud.glyph.closed.connect(_on_glyph_closed)
 	player.died.connect(func(_f: Fighter) -> void: hud.glyph.close())
+	hud.run_start.weapon_picked.connect(player.equip)
+	hud.run_start.inscribed.connect(_on_mask_inscribed)
+	await _warm_up()
+	camera.size = START_ZOOM
+	hud.run_start.open()
+
+
+## The mask is inked: put it on, draw the weapon, and let the dead come.
+func _on_mask_inscribed(glyph: String, power: float, instant := false) -> void:
+	player.set_mask(glyph, power)
+	await player.start_run(instant)
+	create_tween().tween_property(camera, "size", FIGHT_ZOOM, 0.8).set_trans(Tween.TRANS_SINE)
+	_next_wave_in = minf(_next_wave_in, 2.5)
 	Game.toast("The dead stir in the old yard.", Color(0.8, 0.7, 0.6))
+
+
+## Skips the start screen (tests): this weapon, this sigil, ready at once.
+func quick_start(weapon: String, glyph: String, power := 1.0) -> void:
+	hud.run_start.phase = RunStart.Phase.CLOSED
+	hud.run_start.visible = false
+	player.equip(weapon)
+	await _on_mask_inscribed(glyph, power, true)
+
+
+## Draws every effect and creature once, out of sight behind the loading
+## screen, so the browser compiles their shaders now instead of freezing on
+## the first swing, hit or spell. Then tells the web page it can reveal us.
+func _warm_up() -> void:
+	var at := player.global_position + Vector3(1.5, 0, 1.5)
+	var dummies: Array[Node] = []
+	for kind in ["ghoul", "cultist", "brute"]:
+		var e := Enemy.new()
+		e.setup(kind, null, 1)
+		e.position = at + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
+		add_child(e)
+		e.remove_from_group("fighters")
+		dummies.append(e)
+	Fx.blood(at + Vector3(0, 1, 0), Vector3.RIGHT, 20.0)
+	Fx.sparks(at + Vector3(0, 1, 0), Color(1, 0.8, 0.4), 6)
+	Fx.fire_burst(at, 2.0)
+	Fx.bolt(at + Vector3(0, 4, 0), at, Spells.GLYPHS.storm.color)
+	Fx.shockwave(at, 2.0, Spells.GLYPHS.ward.color)
+	Fx.ash_burst(at, 6)
+	var sheet := SpellPaper.new()
+	sheet.setup("ember", 1.0, null, at + Vector3(0, 1, 0), at + Vector3(1, 0, 0))
+	add_child(sheet)
+	dummies.append(sheet)
+
+	var ui: SigilUI = hud.glyph
+	ui.open(player)
+	ui.begin_stroke(Vector2(500, 300))
+	for i in 12:
+		ui.add_point(Vector2(500, 300) + Vector2(cos(i * 0.5), sin(i * 0.5)) * 60.0)
+	ui.mode = SigilUI.Mode.PREPARED
+	ui.glyph = "ember"
+	ui.power = 1.0
+	for i in 3:
+		await get_tree().process_frame
+	ui._burn = 0.0
+	for i in 3:
+		await get_tree().process_frame
+	ui.close()
+	ui.learned.clear()
+	player.facing_locked = false
+
+	for d in dummies:
+		if is_instance_valid(d):
+			d.queue_free()
+	await get_tree().process_frame
+	Fx.clear_decals()
+	ready_to_play = true
+	warmed_up.emit()
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.ashenReady && window.ashenReady()")
 
 
 func _process(delta: float) -> void:

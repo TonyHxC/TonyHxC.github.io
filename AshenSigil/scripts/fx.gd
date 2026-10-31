@@ -5,8 +5,9 @@ class_name Fx
 const MAX_DECALS := 140
 
 static var _decals: Array[Node3D] = []
-static var _drop_mesh: SphereMesh
-static var _quad_mesh: QuadMesh
+## Meshes and materials are shared between effects of the same kind, so a hit
+## doesn't build new GPU resources every time.
+static var _cache := {}
 
 
 static func blood(pos: Vector3, dir: Vector3, amount: float) -> void:
@@ -26,38 +27,53 @@ static func blood(pos: Vector3, dir: Vector3, amount: float) -> void:
 
 static func blood_pool(pos: Vector3, size: float) -> void:
 	var mi := MeshInstance3D.new()
-	var m := CylinderMesh.new()
-	m.top_radius = size * 0.5
-	m.bottom_radius = size * 0.5
-	m.height = 0.01
-	m.radial_segments = 12
-	m.rings = 1
-	mi.mesh = m
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.22, 0.01, 0.01)
-	mat.roughness = 0.25
-	mat.metallic_specular = 0.8
-	mi.material_override = mat
+	mi.mesh = _disc()
+	if not _cache.has("pool_mat"):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.22, 0.01, 0.01)
+		mat.roughness = 0.25
+		mat.metallic_specular = 0.8
+		_cache["pool_mat"] = mat
+	mi.material_override = _cache["pool_mat"]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_add_decal(mi, Vector3(pos.x, 0.01 + randf() * 0.004, pos.z))
-	mi.scale = Vector3(randf_range(0.8, 1.3), 1.0, randf_range(0.8, 1.3))
+	mi.scale = Vector3(randf_range(0.8, 1.3), 1.0, randf_range(0.8, 1.3)) * size
 	mi.rotation.y = randf() * TAU
 
 
 static func scorch(pos: Vector3, size: float) -> void:
 	var mi := MeshInstance3D.new()
-	var m := CylinderMesh.new()
-	m.top_radius = size
-	m.bottom_radius = size
-	m.height = 0.01
-	m.rings = 1
-	mi.mesh = m
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.02, 0.015, 0.01, 0.85)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mi.material_override = mat
+	mi.mesh = _disc()
+	if not _cache.has("scorch_mat"):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.02, 0.015, 0.01, 0.85)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_cache["scorch_mat"] = mat
+	mi.material_override = _cache["scorch_mat"]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_add_decal(mi, Vector3(pos.x, 0.008, pos.z))
+	mi.scale = Vector3(size * 2.0, 1.0, size * 2.0)
+
+
+## Removes every blood pool and scorch mark (used after the loading warm-up).
+static func clear_decals() -> void:
+	for d in _decals:
+		if is_instance_valid(d):
+			d.queue_free()
+	_decals.clear()
+
+
+## A flat disc of diameter 1, scaled per use.
+static func _disc() -> Mesh:
+	if not _cache.has("disc"):
+		var m := CylinderMesh.new()
+		m.top_radius = 0.5
+		m.bottom_radius = 0.5
+		m.height = 0.01
+		m.radial_segments = 14
+		m.rings = 1
+		_cache["disc"] = m
+	return _cache["disc"]
 
 
 static func sparks(pos: Vector3, color: Color, amount: int) -> void:
@@ -238,7 +254,10 @@ static func _add_decal(node: Node3D, pos: Vector3) -> void:
 			old.queue_free()
 
 
-static func _drops(color: Color) -> Mesh:
+static func _drops(color: Color, glow := false) -> Mesh:
+	var key := "drops|%s|%s" % [color, glow]
+	if _cache.has(key):
+		return _cache[key]
 	var m := SphereMesh.new()
 	m.radius = 0.035
 	m.height = 0.07
@@ -247,21 +266,22 @@ static func _drops(color: Color) -> Mesh:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.3
+	if glow:
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.material = mat
+	_cache[key] = m
 	return m
 
 
 static func _glow_drops(color: Color) -> Mesh:
-	var m := _drops(color)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = color
-	(m as SphereMesh).material = mat
-	return m
+	return _drops(color, true)
 
 
 static func _flames() -> Mesh:
+	if _cache.has("flames"):
+		return _cache["flames"]
 	var m := QuadMesh.new()
+	_cache["flames"] = m
 	m.size = Vector2(0.45, 0.45)
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

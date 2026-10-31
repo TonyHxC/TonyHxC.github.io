@@ -1,3 +1,8 @@
+# Assets
+
+## Model: `models/drex.glb`
+The hunter (rig, flail, mask and animations), supplied for this project.
+
 # Third-party assets
 
 ## Textures: Poly Haven, CC0
