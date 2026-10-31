@@ -11,8 +11,9 @@ func _ready() -> void:
 	await _frames(5)
 	var canvas: Control = main.hud.glyph
 	_check(canvas.size == get_viewport().get_visible_rect().size,
-		"parchment overlay fills the screen (%s)" % canvas.size)
+		"sigil overlay spans the screen (%s)" % canvas.size)
 	_test_recognizer()
+	await _test_sigil_mode()
 	await _test_swings()
 	await _test_spells()
 	print("SMOKE: %s (%d failures)" % ["PASS" if failures == 0 else "FAIL", failures])
@@ -56,6 +57,60 @@ func _test_recognizer() -> void:
 		scribble.append(Vector2(randf_range(0, 300), randf_range(0, 300)))
 	var bad := r.recognize(scribble)
 	_check(Spells.power_for(bad["score"]) == 0.0, "scribble fails (%.2f)" % bad["score"])
+
+
+func _draw_stroke(ui: SigilUI, raw: PackedVector2Array, at: Vector2, scale: float) -> void:
+	var pts := _wobbly(raw)
+	ui.begin_stroke(pts[0] - Vector2(400, 300) + at)
+	for i in range(1, pts.size()):
+		ui.add_point((pts[i] - Vector2(400, 300)) * scale + at)
+	ui.end_stroke()
+
+
+func _test_sigil_mode() -> void:
+	var p: Player = main.player
+	var ui: SigilUI = main.hud.glyph
+	var s := Spells.shapes()
+	var start_paper := p.paper
+
+	main._on_glyph_requested()
+	_check(ui.is_open() and p.glyph_open, "Q opens sigil mode")
+	var circle: PackedVector2Array = s["ember"][0]
+	var big := PackedVector2Array()
+	for v in circle:
+		big.append(v * 100.0)
+	# Drawn far from the sheet, at a large size: should still read.
+	_draw_stroke(ui, big, Vector2(900, 200), 1.6)
+	_check(ui.mode == SigilUI.Mode.PREPARED and ui.glyph == "ember", "circle drawn anywhere prepares Ember")
+	_check(p.paper == start_paper, "preparing does not spend paper")
+	ui.cast_prepared()
+	await _frames(2)
+	_check(p.paper == start_paper - 1 and not p.glyph_open, "click casts, spends one sheet and clears the UI")
+
+	main._on_glyph_requested()
+	var scribble := PackedVector2Array()
+	for i in 40:
+		scribble.append(Vector2(randf_range(-150, 150), randf_range(-150, 150)))
+	ui.begin_stroke(scribble[0] + Vector2(400, 300))
+	for v in scribble:
+		ui.add_point(v + Vector2(400, 300))
+	ui.end_stroke()
+	_check(ui.mode == SigilUI.Mode.FADING and p.paper == start_paper - 1, "bad stroke fades and costs nothing")
+	await get_tree().create_timer(SigilUI.FADE_TIME * 1.5, true, false, true).timeout
+	_check(ui.mode == SigilUI.Mode.READY, "can retry after a bad stroke")
+
+	var tri: PackedVector2Array = s["ward"][0]
+	var big_tri := PackedVector2Array()
+	for v in tri:
+		big_tri.append(v * 100.0)
+	_draw_stroke(ui, big_tri, Vector2(500, 400), 1.0)
+	await _frames(2)
+	_check(p.paper == start_paper - 2 and not ui.is_open(), "Repulsion casts immediately")
+
+	main._on_glyph_requested()
+	ui.close()
+	_check(not p.glyph_open and not Game.slowmo, "Q / right-click puts it away")
+	p.paper = start_paper
 
 
 func _spawn_dummy(offset: Vector3) -> Enemy:

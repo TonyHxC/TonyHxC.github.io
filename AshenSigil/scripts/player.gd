@@ -11,11 +11,13 @@ const CAM_FWD := Vector3(-0.70710678, 0.0, -0.70710678)
 const CAM_RIGHT := Vector3(0.70710678, 0.0, -0.70710678)
 const FULL_CHARGE := 0.7
 const DRAG_DEADZONE := 25.0
+const SPELL_REACH := 9.0
 
 var cam: Camera3D
 var aim_point := Vector3.ZERO
 var paper := 8
 var glyph_open := false
+var facing_locked := false
 
 var _drag := Vector2.ZERO
 var _combo_flip := false
@@ -49,15 +51,15 @@ func _dress() -> void:
 
 func _think(delta: float) -> void:
 	_update_aim()
-	if glyph_open:
-		move_input = Vector3.ZERO
-		set_guard(false)
-		return
 	var iv := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	move_input = CAM_RIGHT * iv.x + CAM_FWD * iv.y
-	# The facing locks once you start winding up; the drag picks the cut instead.
-	if state != State.WINDUP:
+	# The facing locks once you start winding up (the drag picks the cut) and
+	# while the pen is down (the gesture isn't aiming).
+	if state != State.WINDUP and not facing_locked:
 		desired_facing = yaw_to(aim_point)
+	if glyph_open:
+		set_guard(false)
+		return
 	set_guard(Input.is_action_pressed("guard") and state == State.IDLE)
 	if state == State.WINDUP:
 		set_windup_type(_drag_to_swing())
@@ -65,7 +67,12 @@ func _think(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if glyph_open or is_dead():
+	if is_dead():
+		return
+	if glyph_open:
+		# Sigil mode owns the mouse; you can still dodge out of trouble.
+		if event.is_action_pressed("dodge"):
+			dodge(move_input if move_input.length() > 0.1 else -forward())
 		return
 	if event.is_action_pressed("attack"):
 		_drag = Vector2.ZERO
@@ -80,7 +87,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("dodge"):
 		var d := move_input if move_input.length() > 0.1 else -forward()
 		dodge(d)
-	elif event.is_action_pressed("glyph") and state == State.IDLE:
+	elif event.is_action_pressed("glyph") and state != State.WINDUP and state != State.SWING:
 		if paper > 0:
 			glyph_requested.emit()
 		else:
@@ -96,26 +103,22 @@ func add_paper(n: int) -> void:
 	paper_changed.emit(paper)
 
 
-## Called by the parchment once a sigil is inked. power <= 0 means it failed.
+## Where a sigil would land right now: the cursor, clamped to throwing range.
+func spell_target(glyph: String) -> Vector3:
+	if glyph == "ward":
+		return global_position
+	var flat := aim_point - global_position
+	flat.y = 0.0
+	return global_position + flat.limit_length(SPELL_REACH)
+
+
+## Called when a prepared sigil is cast: spends the sheet and throws it.
 func cast_glyph(glyph: String, power: float) -> void:
 	paper -= 1
 	paper_changed.emit(paper)
 	var hand := global_position + Vector3(0, 1.3, 0) + forward() * 0.4
-	if power <= 0.0:
-		Fx.fizzle(hand)
-		take_hit(self, 6.0, Vector3.ZERO, 0.0, 0.4, false)
-		Game.toast("The sigil is malformed. It bites back.", Color(0.9, 0.4, 0.3))
-		return
-	var target := aim_point
-	var reach := 9.0
-	var flat := target - global_position
-	flat.y = 0.0
-	if flat.length() > reach:
-		target = global_position + flat.normalized() * reach
-	if glyph == "ward":
-		target = global_position
 	var paper_node := SpellPaper.new()
-	paper_node.setup(glyph, power, self, hand, target)
+	paper_node.setup(glyph, power, self, hand, spell_target(glyph))
 	Game.world.add_child(paper_node)
 
 

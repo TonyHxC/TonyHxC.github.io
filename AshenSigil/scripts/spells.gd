@@ -44,6 +44,14 @@ static func power_for(score: float) -> float:
 	return remap(clampf(score, PASS_SCORE, GREAT_SCORE), PASS_SCORE, GREAT_SCORE, 0.7, 1.3)
 
 
+## Area of effect, also used to size the aiming ring.
+static func radius(glyph: String, power: float) -> float:
+	match glyph:
+		"ember": return 2.4 + 0.9 * power
+		"ward": return 3.8 + 1.2 * power
+	return 1.0
+
+
 static func detonate(glyph: String, power: float, caster: Fighter, pos: Vector3) -> void:
 	match glyph:
 		"ember": _ember(power, caster, pos)
@@ -52,7 +60,7 @@ static func detonate(glyph: String, power: float, caster: Fighter, pos: Vector3)
 
 
 static func _ember(power: float, caster: Fighter, pos: Vector3) -> void:
-	var r := 2.4 + 0.9 * power
+	var r := radius("ember", power)
 	for o in caster.opponents():
 		var d := o.global_position - pos
 		d.y = 0.0
@@ -107,7 +115,7 @@ static func _storm(power: float, caster: Fighter, pos: Vector3) -> void:
 
 
 static func _ward(power: float, caster: Fighter, pos: Vector3) -> void:
-	var r := 3.8 + 1.2 * power
+	var r := radius("ward", power)
 	for o in caster.opponents():
 		var d := o.global_position - pos
 		d.y = 0.0

@@ -30,8 +30,9 @@ func _ready() -> void:
 	add_child(hud)
 	Game.hud = hud
 	hud.bind(player)
-	hud.glyph.finished.connect(_on_glyph_finished)
-	hud.glyph.cancelled.connect(_on_glyph_closed)
+	hud.glyph.cast.connect(_on_glyph_cast)
+	hud.glyph.closed.connect(_on_glyph_closed)
+	player.died.connect(func(_f: Fighter) -> void: hud.glyph.close())
 	Game.toast("The dead stir in the old yard.", Color(0.8, 0.7, 0.6))
 
 
@@ -363,7 +364,7 @@ func _on_enemy_died(f: Fighter) -> void:
 func _on_glyph_requested() -> void:
 	player.glyph_open = true
 	Game.slowmo = true
-	hud.glyph.open()
+	hud.glyph.open(player)
 
 
 func _on_glyph_closed() -> void:
@@ -371,10 +372,5 @@ func _on_glyph_closed() -> void:
 	Game.slowmo = false
 
 
-func _on_glyph_finished(glyph: String, score: float) -> void:
-	_on_glyph_closed()
-	var power := Spells.power_for(score)
-	if power > 0.0:
-		var info: Dictionary = Spells.GLYPHS[glyph]
-		Game.toast("%s sigil   %d%%" % [info.title, roundi(score * 100.0)], info.color)
+func _on_glyph_cast(glyph: String, power: float) -> void:
 	player.cast_glyph(glyph, power)

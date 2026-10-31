@@ -48,7 +48,7 @@ func _ready() -> void:
 	_root.draw.connect(_on_draw)
 	add_child(_root)
 
-	glyph = preload("res://scripts/glyph_canvas.gd").new()
+	glyph = SigilUI.new()
 	add_child(glyph)
 
 
@@ -91,11 +91,19 @@ func _on_draw() -> void:
 	_bar(Rect2(bx, by + 22, 280, 9), player.stamina / player.max_stamina, Color(0.75, 0.62, 0.25))
 	_text(Vector2(bx, by - 10), "%d / %d" % [ceili(player.health), int(player.max_health)], 14, Color(0.85, 0.75, 0.7))
 
-	# Paper.
-	var px := bx + 300.0
-	for i in mini(player.paper, 12):
-		c.draw_rect(Rect2(px + i * 13.0, by - 6, 10, 14), Color(0.84, 0.76, 0.58))
-	_text(Vector2(px, by + 30), "Paper x%d   [Q] ink a sigil" % player.paper, 14, Color(0.8, 0.74, 0.6))
+	# Paper stack beside the bars.
+	var px := bx + 304.0
+	var sheets := mini(player.paper, 3)
+	for i in range(sheets - 1, -1, -1):
+		var o := Vector2(i * 3.0, -i * 3.0)
+		var r := Rect2(Vector2(px, by - 2) + o, Vector2(20, 26))
+		c.draw_rect(r, Color(0.84, 0.76, 0.58).darkened(0.12 * i))
+		c.draw_rect(r, Color(0.4, 0.28, 0.15), false, 1.0)
+	if sheets == 0:
+		c.draw_rect(Rect2(px, by - 2, 20, 26), Color(0.4, 0.28, 0.15, 0.6), false, 1.0)
+	var paper_col := Color(0.85, 0.79, 0.64) if player.paper > 0 else Color(0.7, 0.35, 0.3)
+	_text(Vector2(px + 32, by + 18), "×%d" % player.paper, 18, paper_col)
+	_text(Vector2(px + 32, by + 34), "Q", 11, Color(0.65, 0.6, 0.52))
 
 	# Wave, top centre.
 	_text_c(Vector2(0, 40), s.x, "Wave %d" % wave if wave > 0 else "", 26, Color(0.75, 0.12, 0.08))
@@ -119,7 +127,8 @@ func _on_draw() -> void:
 			"Hold LMB  wind up   drag while holding: <- -> slash, down overhead, up thrust",
 			"Release  swing      longer hold = heavier, more stamina",
 			"RMB  guard (tap just before a hit to parry)",
-			"Space  dodge        Q  ink a sigil      Wheel  zoom      H  hide help",
+			"Space  dodge        Wheel  zoom         H  hide help",
+			"Q  sigil mode: draw anywhere, release, then click to cast   (Tab: sigil guides)",
 		]
 		for i in lines.size():
 			_text(Vector2(20, 28 + i * 18), lines[i], 13, Color(0.7, 0.66, 0.6, 0.85))
