@@ -3,6 +3,8 @@ extends Fighter
 ## Hold LMB to wind up, drag the mouse while holding to pick the cut,
 ## release to swing. RMB guards (early guard = parry), Space dodges,
 ## Q opens the parchment to ink a sigil, E readies the mask's power.
+## A wind-up can be feinted into a guard or dodge, and the next attack, guard
+## or dodge can cut a recovery short.
 
 signal paper_changed(count: int)
 signal glyph_requested
@@ -16,9 +18,19 @@ const SPELL_REACH := 9.0
 const ATTACK_BUFFER := 0.4
 ## A buffered click that was already released still winds up this long before swinging.
 const TAP_WINDUP := 0.08
+## A dodge pressed while still busy is remembered this long (real seconds).
+const DODGE_BUFFER := 0.3
+## Soft lock: foes within this angle of where you aimed draw your swing to them.
+const LOCK_CONE := 0.9
+## The most the release nudges you onto a foe; the wind-up does the rest of the turn.
+const RELEASE_NUDGE := 0.35
 
 var cam: Camera3D
+## Where the hunter is aiming. Held still from the moment you click until you
+## move the mouse after the swing, so the drag that picks the cut doesn't aim.
 var aim_point := Vector3.ZERO
+## Where the cursor actually is on the ground.
+var cursor_point := Vector3.ZERO
 var paper := 8
 var glyph_open := false
 var facing_locked := false
@@ -41,6 +53,9 @@ var _combo_flip := false
 var _buffer_t := 0.0
 var _buffer_released := false
 var _auto_release := false
+var _aim_held := false
+var _aim_offset := Vector3.ZERO
+var _dodge_buffer_t := 0.0
 
 
 func _init() -> void:
@@ -48,15 +63,19 @@ func _init() -> void:
 	max_health = 120.0
 	move_speed = 4.8
 	windup_glow = Color(1.0, 0.7, 0.35)
+	# The hunter keeps most of their footwork while attacking and turns quickly
+	# onto a target while winding up.
+	windup_move = 0.75
+	swing_move = 0.4
+	recover_move = 0.7
+	windup_turn = 12.0
 	equip("sword")
 
 
 ## The hunter model from drex.glb. The weapon pivot stays: it's an invisible
 ## guide that the ArmRig aims the real arm along.
 func _build_body() -> void:
-	visual = Node3D.new()
-	visual.name = "Visual"
-	add_child(visual)
+	_make_visual()
 	model = HunterModel.new()
 	visual.add_child(model)
 	model.build(HIT_FLASH, windup_glow)
@@ -121,7 +140,7 @@ func _dress() -> void:
 	for mi in visual.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lantern.set_script(preload("res://scripts/flicker.gd"))
-	add_child(lantern)
+	smooth.add_child(lantern)
 
 
 func _think(delta: float) -> void:
@@ -135,15 +154,26 @@ func _think(delta: float) -> void:
 	_update_aim()
 	var iv := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	move_input = CAM_RIGHT * iv.x + CAM_FWD * iv.y
-	# The facing locks once you start winding up (the drag picks the cut) and
-	# while the pen is down (the gesture isn't aiming).
-	if state != State.WINDUP and not facing_locked:
-		desired_facing = yaw_to(aim_point)
+	# Winding up turns you onto the foe nearest where you aimed; otherwise you
+	# face the aim point. The pen being down (drawing a sigil) isn't aiming.
+	if not facing_locked:
+		var foe := _lock_target() if state == State.WINDUP else null
+		desired_facing = yaw_to(foe.global_position if foe else aim_point)
 	if glyph_open:
 		set_guard(false)
 		return
-	set_guard(Input.is_action_pressed("guard") and state == State.IDLE)
+	var want_guard := Input.is_action_pressed("guard")
+	if want_guard and (state == State.WINDUP or (state == State.RECOVER and state_time >= recover_time() * 0.3)):
+		# Guarding cancels a wind-up (a feint) or cuts the recovery short.
+		_set_state(State.IDLE)
+		_auto_release = false
+		_buffer_t = 0.0
+	set_guard(want_guard and state == State.IDLE)
 	winded_t = maxf(0.0, winded_t - Game.real_delta)
+	if _dodge_buffer_t > 0.0:
+		_dodge_buffer_t -= Game.real_delta
+		if _dodge():
+			_dodge_buffer_t = 0.0
 	if _buffer_t > 0.0:
 		_buffer_t -= Game.real_delta
 		if _try_windup():
@@ -165,10 +195,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if glyph_open:
 		# Sigil mode owns the mouse; you can still dodge out of trouble.
 		if event.is_action_pressed("dodge"):
-			dodge(move_input if move_input.length() > 0.1 else -forward())
+			_dodge()
 		return
 	if event.is_action_pressed("attack"):
 		_drag = Vector2.ZERO
+		_aim_held = true
 		if not _try_windup():
 			# Still recovering, staggered or dodging: remember the click.
 			_buffer_t = ATTACK_BUFFER
@@ -178,11 +209,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_release()
 		elif _buffer_t > 0.0:
 			_buffer_released = true
-	elif event is InputEventMouseMotion and state == State.WINDUP:
-		_drag += (event as InputEventMouseMotion).relative
+	elif event is InputEventMouseMotion:
+		if state == State.WINDUP:
+			_drag += (event as InputEventMouseMotion).relative
+		elif state != State.SWING and _buffer_t <= 0.0:
+			_aim_held = false  # the swing is done and you're aiming again
 	elif event.is_action_pressed("dodge"):
-		var d := move_input if move_input.length() > 0.1 else -forward()
-		dodge(d)
+		if not _dodge():
+			_dodge_buffer_t = DODGE_BUFFER
 	elif event.is_action_pressed("glyph") and state != State.WINDUP and state != State.SWING:
 		if paper > 0:
 			glyph_requested.emit()
@@ -199,8 +233,13 @@ func _try_windup() -> bool:
 	return false
 
 
+func _dodge() -> bool:
+	return dodge(move_input if move_input.length() > 0.1 else -forward())
+
+
 func _release() -> void:
-	var power := remap(clampf(state_time, 0.1, FULL_CHARGE), 0.1, FULL_CHARGE, 0.6, 1.5)
+	# A click remembered from mid-swing comes out as a normal blow, not the weakest.
+	var power := 1.0 if _auto_release else remap(clampf(state_time, 0.1, FULL_CHARGE), 0.1, FULL_CHARGE, 0.6, 1.5)
 	_auto_release = false
 	_assist_aim()
 	release_swing(power)
@@ -318,7 +357,28 @@ func _update_aim() -> void:
 	var from := cam.project_ray_origin(mp)
 	var dir := cam.project_ray_normal(mp)
 	if absf(dir.y) > 0.0001:
-		aim_point = from + dir * (-from.y / dir.y)
+		cursor_point = from + dir * (-from.y / dir.y)
+	if glyph_open:
+		_aim_held = false  # sigils aim at the cursor
+	if _aim_held:
+		# Held as an offset, so walking during the swing doesn't swing your aim around.
+		aim_point = global_position + _aim_offset
+	else:
+		aim_point = cursor_point
+		_aim_offset = aim_point - global_position
+
+
+## The foe nearest where you're aiming, within reach of a lunge, or null.
+func _lock_target() -> Fighter:
+	var aim_yaw := yaw_to(aim_point)
+	var best: Fighter = null
+	var best_d := weapon_reach + 2.0
+	for o in opponents():
+		var d := flat_dist(o)
+		if absf(wrapf(yaw_to(o.global_position) - aim_yaw, -PI, PI)) < LOCK_CONE and d < best_d:
+			best = o
+			best_d = d
+	return best
 
 
 func _default_slash() -> Swing:
@@ -333,16 +393,14 @@ func _drag_to_swing() -> Swing:
 	return Swing.OVERHEAD if _drag.y > 0.0 else Swing.THRUST
 
 
-## Soft lock: on release, turn to the nearest foe roughly in front of you.
+## Soft lock on release: the wind-up has been turning you onto the foe; a quick
+## tap may not have finished, so close a small gap at once (hidden by the swing).
 func _assist_aim() -> void:
-	var best: Fighter = null
-	var best_d := weapon_reach + 2.0
-	for o in opponents():
-		var rel := wrapf(yaw_to(o.global_position) - facing_angle, -PI, PI)
-		var d := flat_dist(o)
-		if absf(rel) < 0.9 and d < best_d:
-			best = o
-			best_d = d
-	if best:
-		facing_angle = yaw_to(best.global_position)
-		desired_facing = facing_angle
+	if facing_locked:
+		return
+	var foe := _lock_target()
+	if foe:
+		var want := yaw_to(foe.global_position)
+		var gap := wrapf(want - facing_angle, -PI, PI)
+		facing_angle = wrapf(facing_angle + clampf(gap, -RELEASE_NUDGE, RELEASE_NUDGE), -PI, PI)
+		desired_facing = want

@@ -9,6 +9,7 @@ var _focus := Vector3.ZERO
 
 
 func _ready() -> void:
+	process_priority = 10  # after fighters have placed their visuals this frame
 	projection = PROJECTION_ORTHOGONAL
 	size = 15.0
 	near = 0.1
@@ -17,7 +18,7 @@ func _ready() -> void:
 
 func snap() -> void:
 	if target:
-		_focus = target.global_position
+		_focus = _target_pos()
 	_place()
 
 
@@ -36,7 +37,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	if target:
-		_focus = _focus.lerp(target.global_position, 1.0 - exp(-6.0 * delta))
+		_focus = _focus.lerp(_target_pos(), 1.0 - exp(-6.0 * delta))
 	trauma = maxf(0.0, trauma - delta * 1.6)
 	_place()
 	var s := trauma * trauma * 0.4
@@ -47,3 +48,8 @@ func _process(delta: float) -> void:
 func _place() -> void:
 	global_position = _focus + OFFSET
 	look_at(_focus, Vector3.UP)
+
+
+## Follows what's drawn, not the physics body, so the view glides too.
+func _target_pos() -> Vector3:
+	return target.visual_position() if target is Fighter else target.global_position

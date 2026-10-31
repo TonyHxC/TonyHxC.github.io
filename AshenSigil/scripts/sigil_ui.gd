@@ -234,7 +234,7 @@ func _process(_delta: float) -> void:
 		a["spin"] += a["spin_v"] * dt
 	_ash = _ash.filter(func(a: Dictionary) -> bool: return a["life"] > 0.0)
 	if player and is_instance_valid(player) and player.cam:
-		var chest := player.cam.unproject_position(player.global_position + Vector3(0, 1.1, 0))
+		var chest := player.cam.unproject_position(player.visual_position() + Vector3(0, 1.1, 0))
 		_center = chest + OFFSET + Vector2(0, sin(_t * 2.2) * 3.0)
 	_place_sheet()
 	_update_3d()

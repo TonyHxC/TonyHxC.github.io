@@ -51,6 +51,12 @@ var stun_bonus := 0.0
 var dodge_cost := 22.0
 ## The thrust becomes a full spin that strikes all around (the flail).
 var whirl := false
+## How much of your footwork survives each phase of an attack, and how fast
+## you turn while winding up.
+var windup_move := 0.5
+var swing_move := 0.2
+var recover_move := 0.45
+var windup_turn := 7.0
 
 var health := 0.0
 var stamina := 0.0
@@ -69,6 +75,9 @@ var guard_time := 0.0
 var invuln_left := 0.0
 var stamina_delay := 0.0
 
+## Everything you see of the fighter hangs off smooth, which glides between the
+## body's 60 Hz physics positions so motion stays even at any frame rate.
+var smooth: Node3D
 var visual: Node3D
 var weapon_pivot: Node3D
 var weapon_mat: StandardMaterial3D
@@ -82,6 +91,10 @@ var _burn_left := 0.0
 var _burn_dps := 0.0
 var _burn_by: Fighter
 var _burn_spark := 0.0
+## The lunge still to cover this swing, in metres (see _move).
+var _step := 0.0
+var _pos_prev := Vector3.ZERO
+var _pos_now := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -99,14 +112,40 @@ func _ready() -> void:
 	add_child(shape)
 	_build_body()
 	facing_angle = desired_facing
+	snap_visual()
 
 
 # --- body -------------------------------------------------------------------
 
-func _build_body() -> void:
+func _make_visual() -> void:
+	smooth = Node3D.new()
+	smooth.name = "Smooth"
+	smooth.top_level = true
+	add_child(smooth)
 	visual = Node3D.new()
 	visual.name = "Visual"
-	add_child(visual)
+	smooth.add_child(visual)
+
+
+## Puts the visuals on the body at once; call after teleporting it.
+func snap_visual() -> void:
+	_pos_now = global_position
+	_pos_prev = _pos_now
+	if smooth:
+		smooth.global_position = _pos_now
+
+
+## Where the fighter is drawn this frame (between physics steps).
+func visual_position() -> Vector3:
+	return smooth.global_position if smooth else global_position
+
+
+func _process(_delta: float) -> void:
+	smooth.global_position = _pos_prev.lerp(_pos_now, Engine.get_physics_interpolation_fraction())
+
+
+func _build_body() -> void:
+	_make_visual()
 	var legs := body_color.darkened(0.35)
 	# Roughly seven and a half heads tall, with broad shoulders for a readable silhouette.
 	_part(_capsule(0.085, 0.9), Vector3(-0.1, 0.45, 0.0), legs, true, cloth_texture)
@@ -275,6 +314,12 @@ func _think(_delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_step_physics(delta)
+	_pos_prev = _pos_now
+	_pos_now = global_position
+
+
+func _step_physics(delta: float) -> void:
 	if state == State.DEAD:
 		_dead_physics(delta)
 		return
@@ -352,7 +397,7 @@ func _tick_stamina(delta: float) -> void:
 func _turn(delta: float) -> void:
 	var rate := 14.0
 	match state:
-		State.WINDUP: rate = 7.0
+		State.WINDUP: rate = windup_turn
 		State.SWING: rate = 2.0
 		State.RECOVER: rate = 4.0
 		State.STAGGER, State.DODGE: rate = 0.0
@@ -364,16 +409,16 @@ func _turn(delta: float) -> void:
 func _move(delta: float) -> void:
 	var mult := 1.0
 	match state:
-		State.WINDUP: mult = 0.5
-		State.SWING: mult = 0.2
-		State.RECOVER: mult = 0.45
+		State.WINDUP: mult = windup_move
+		State.SWING: mult = swing_move
+		State.RECOVER: mult = recover_move
 		State.STAGGER, State.DODGE: mult = 0.0
 	if guarding:
 		mult *= 0.5
 	var target := move_input.limit_length(1.0) * move_speed * mult
 	move_vel = move_vel.move_toward(target, accel * delta)
 	impulse = impulse.lerp(Vector3.ZERO, 1.0 - exp(-7.0 * delta))
-	var v := move_vel + impulse
+	var v := move_vel + impulse + _lunge_velocity()
 	velocity.x = v.x
 	velocity.z = v.z
 	velocity.y = -0.5 if is_on_floor() else velocity.y - 25.0 * delta
@@ -381,6 +426,15 @@ func _move(delta: float) -> void:
 	move_and_slide()
 	if slam > 4.5:
 		_check_slam(slam)
+
+
+## The swing's step forward: covers exactly _step metres over the first 60% of
+## the cut, fast at first and easing to a planted stop (no slide afterwards).
+func _lunge_velocity() -> Vector3:
+	if state != State.SWING or _step <= 0.0:
+		return Vector3.ZERO
+	var q := minf(swing_progress() / 0.6, 1.0)
+	return forward() * (_step * 2.0 * (1.0 - q) / (0.6 * swing_time()))
 
 
 ## Being thrown into a wall or another body hurts both of you.
@@ -411,10 +465,21 @@ func _dead_physics(delta: float) -> void:
 
 # --- actions ----------------------------------------------------------------
 
-## Free to start a swing: idle, or in the last stretch of the previous swing's
-## recovery, so chained attacks flow instead of waiting for a full stop.
+## Free to start a swing: idle, or once the previous swing's recovery is under
+## way, so chained attacks flow instead of waiting for a full stop.
 func can_attack() -> bool:
-	return state == State.IDLE or (state == State.RECOVER and state_time >= recover_time() * 0.6)
+	return state == State.IDLE or (state == State.RECOVER and state_time >= recover_time() * 0.3)
+
+
+## A dodge can cancel a wind-up (a feint) or the tail of a swing once its blow
+## has landed, as well as recovery.
+func can_dodge() -> bool:
+	match state:
+		State.IDLE, State.RECOVER, State.WINDUP:
+			return true
+		State.SWING:
+			return swing_progress() >= 0.7
+	return false
 
 
 func begin_windup(type: Swing) -> bool:
@@ -440,13 +505,12 @@ func release_swing(power: float) -> void:
 	_hit_list.clear()
 	_set_state(State.SWING)
 	_blade_prev = _swing_pose(0.0).y
-	if not is_whirl():
-		var lunge := (1.5 + 2.5 * power) * (1.7 if swing_type == Swing.THRUST else 1.0) * lunge_mult
-		impulse += forward() * lunge
+	# About as far as the old fading shove carried you, but planted at the end.
+	_step = 0.0 if is_whirl() else (1.5 + 2.5 * power) / 7.0 * (1.7 if swing_type == Swing.THRUST else 1.0) * lunge_mult
 
 
 func dodge(dir: Vector3) -> bool:
-	if not (state == State.IDLE or state == State.RECOVER) or stamina < dodge_cost - 2.0:
+	if not can_dodge() or stamina < dodge_cost - 2.0:
 		return false
 	stamina -= dodge_cost
 	stamina_delay = 0.6

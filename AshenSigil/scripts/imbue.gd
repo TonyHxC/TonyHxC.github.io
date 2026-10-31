@@ -139,6 +139,7 @@ static func _flicker(power: float, hunter: Fighter, target: Fighter, color: Colo
 	behind.x = clampf(behind.x, -16.0, 16.0)
 	behind.z = clampf(behind.z, -16.0, 16.0)
 	hunter.global_position = Vector3(behind.x, from.y, behind.z)
+	hunter.snap_visual()
 	hunter.facing_angle = hunter.yaw_to(next.global_position)
 	hunter.desired_facing = hunter.facing_angle
 	hunter.invuln_left = maxf(hunter.invuln_left, 0.4)

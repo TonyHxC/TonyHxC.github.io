@@ -23,9 +23,13 @@ func _ready() -> void:
 	_test_recognizer()
 	await _test_run_start()
 	await _test_sigil_mode()
+	# These swing at dummies placed in front, so facing is pinned rather than aimed.
+	main.player.facing_locked = true
 	await _test_swings()
 	await _test_traits()
 	await _test_imbue()
+	main.player.facing_locked = false
+	await _test_flow()
 	await _test_spells()
 	print("SMOKE: %s (%d failures)" % ["PASS" if failures == 0 else "FAIL", failures])
 	get_tree().quit(failures)
@@ -251,6 +255,7 @@ func _test_swings() -> void:
 	p.state = Fighter.State.IDLE
 	p.facing_angle = 0.0
 	foe.facing_angle = PI
+	foe.desired_facing = PI  # facing the hunter, as a real foe would
 	foe.target = null
 	Input.action_press("guard")
 	await _frames(1)
@@ -354,6 +359,104 @@ func _test_imbue() -> void:
 	p.equip("axe")
 	p.set_mask("ward", 1.0)
 	p.imbue_cd = 0.0
+
+
+## The things that keep attacks fluid: soft lock, feints, cancels, chains, a planted lunge.
+func _test_flow() -> void:
+	var p: Player = main.player
+	p.equip("sword")
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	await _frames(2)
+	# Winding up turns you onto the foe nearest where you aimed.
+	var foe := _spawn_dummy(Vector3(1.2, 0, -1.2))
+	await _frames(2)
+	p._aim_held = true
+	p._aim_offset = Vector3(0, 0, -3)  # aimed straight ahead; the foe is 45 degrees off
+	p.facing_angle = 0.0
+	p.begin_windup(Fighter.Swing.SLASH_RL)
+	await _frames(15)
+	var gap := absf(wrapf(p.yaw_to(foe.global_position) - p.facing_angle, -PI, PI))
+	_check(gap < 0.15, "winding up turns onto the nearby foe (%.2f rad off)" % gap)
+	p.release_swing(1.0)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	foe.queue_free()
+	p._aim_held = false
+
+	# The lunge plants: once the cut is done you don't keep sliding.
+	p.state = Fighter.State.IDLE
+	p.stamina = p.max_stamina
+	p.move_vel = Vector3.ZERO
+	p.impulse = Vector3.ZERO
+	p._aim_held = true
+	p._aim_offset = Vector3(0, 0, -3)
+	var start := p.global_position
+	p.begin_windup(Fighter.Swing.THRUST)
+	p._drag = DRAGS[Fighter.Swing.THRUST]
+	await _frames(3)
+	p.release_swing(1.0)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	var after_swing := p.global_position
+	await _frames(10)
+	var lunge := start.distance_to(after_swing)
+	var slide := after_swing.distance_to(p.global_position)
+	_check(lunge > 0.5 and slide < 0.05, "thrust steps %.2f m and plants (slides %.3f m after)" % [lunge, slide])
+
+	# The next swing can start early in the recovery.
+	while p.state == Fighter.State.RECOVER and p.state_time < p.recover_time() * 0.35:
+		await _frames(1)
+	_check(p.can_attack(), "a new swing can start a third of the way into recovery")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# A wind-up can be feinted into a dodge or a guard.
+	p.stamina = p.max_stamina
+	p.begin_windup(Fighter.Swing.OVERHEAD)
+	await _frames(5)
+	_check(p.dodge(Vector3.BACK), "dodging out of a wind-up")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+	p.stamina = p.max_stamina
+	p.begin_windup(Fighter.Swing.OVERHEAD)
+	await _frames(5)
+	Input.action_press("guard")
+	await _frames(2)
+	_check(p.guarding and p.state == Fighter.State.IDLE, "guarding out of a wind-up (a feint)")
+	Input.action_release("guard")
+	await _frames(2)
+
+	# Mid-swing you're committed; once the blow has passed you can dodge away.
+	p.stamina = p.max_stamina
+	p.begin_windup(Fighter.Swing.SLASH_RL)
+	await _frames(2)
+	p.release_swing(1.0)
+	await _frames(2)
+	var early := p.can_dodge()
+	while p.swing_progress() < 0.75:
+		await _frames(1)
+	_check(not early and p.can_dodge(), "dodge is locked mid-cut, open at its tail")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# A click remembered from mid-swing swings at full strength, not the weakest.
+	p.stamina = p.max_stamina
+	p.begin_windup(Fighter.Swing.SLASH_RL)
+	p.release_swing(1.0)
+	await _frames(2)
+	_click(p, true)
+	_click(p, false)
+	var swung := false
+	for i in 90:
+		await _frames(1)
+		if p.state == Fighter.State.SWING:
+			swung = true
+			break
+	_check(swung and is_equal_approx(p.swing_power, 1.0), "a buffered click swings at normal strength (%.2f)" % p.swing_power)
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+	p._aim_held = false
 
 
 func _test_spells() -> void:
