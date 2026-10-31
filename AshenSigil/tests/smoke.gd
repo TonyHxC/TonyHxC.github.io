@@ -28,6 +28,7 @@ func _ready() -> void:
 	await _test_swings()
 	await _test_traits()
 	await _test_imbue()
+	await _test_foes()
 	main.player.facing_locked = false
 	await _test_flow()
 	await _test_spells()
@@ -187,9 +188,9 @@ func _click(p: Player, pressed: bool) -> void:
 	p._unhandled_input(ev)
 
 
-func _spawn_dummy(offset: Vector3) -> Enemy:
+func _spawn_dummy(offset: Vector3, kind := "cultist") -> Enemy:
 	var e := Enemy.new()
-	e.setup("cultist", null, 1)
+	e.setup(kind, null, 1)
 	e.position = main.player.global_position + offset
 	main.add_child(e)
 	e.state = Fighter.State.IDLE
@@ -268,6 +269,21 @@ func _test_swings() -> void:
 	await _frames(2)
 
 
+## Swings at a dummy and returns as soon as the cut is over (to catch a stagger).
+func _swing_at(p: Player, e: Enemy, type := Fighter.Swing.SLASH_RL) -> void:
+	await _frames(2)
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.facing_angle = p.yaw_to(e.global_position)
+	p.desired_facing = p.facing_angle
+	p.begin_windup(type)
+	p._drag = DRAGS[type]
+	await _frames(5)
+	p.release_swing(1.0)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+
+
 ## Swings at a dummy standing in front and returns the damage dealt.
 func _strike(p: Player, e: Enemy, type := Fighter.Swing.SLASH_RL) -> float:
 	await _frames(2)
@@ -328,6 +344,121 @@ func _test_traits() -> void:
 	_check(burner.health < hp - 5.0 and burner.state != Fighter.State.STAGGER, "burning hurts over time (%.0f -> %.0f)" % [hp, burner.health])
 	burner.queue_free()
 	await _frames(2)
+
+
+## Poise, posture breaks, and each foe's opening.
+func _test_foes() -> void:
+	var p: Player = main.player
+	p.equip("sword")
+	p.invuln_left = 0.0
+	# Earlier lunges have walked the hunter about; start from the open middle.
+	p.global_position = Vector3.ZERO
+	p.snap_visual()
+	await _frames(2)
+	# A ghoul has no poise: any blow staggers it.
+	var ghoul := _spawn_dummy(Vector3(0, 0, -1.3), "ghoul")
+	await _swing_at(p, ghoul)
+	_check(ghoul.state == Fighter.State.STAGGER, "a light cut staggers a ghoul")
+	ghoul.queue_free()
+
+	# A cultist's poise shrugs off a light cut, but a finisher breaks it.
+	var c := _spawn_dummy(Vector3(0, 0, -1.3))
+	c.health = 400.0  # survives long enough to measure
+	c.facing_angle = PI
+	c.desired_facing = PI
+	await _strike(p, c)
+	_check(c.state == Fighter.State.IDLE and c.poise < c.max_poise and c.broken_t <= 0.0,
+		"a light cut only flinches a cultist (poise %.0f / %.0f)" % [c.poise, c.max_poise])
+	await _frames(2)
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.begin_windup(Fighter.Swing.OVERHEAD)
+	await _frames(5)
+	p.release_swing(1.0, false, true)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	_check(c.broken_t > 0.0 and c.state == Fighter.State.STAGGER, "a finisher breaks its posture")
+	var hp := c.health
+	var dealt := await _strike(p, c)
+	_check(dealt > p.weapon_damage * 1.2, "a broken posture takes harder blows (%.0f)" % dealt)
+	c.queue_free()
+
+	# A ward blocks a light cut from the front; an overhead smashes it.
+	var w := _spawn_dummy(Vector3(0, 0, -1.3))
+	w.facing_angle = PI
+	w.desired_facing = PI
+	w.target = p
+	w.cooldown = 99.0
+	await _frames(2)
+	w.state = Fighter.State.IDLE
+	w.set_guard(true)
+	w._ward_t = 5.0
+	hp = w.health
+	await _strike(p, w)
+	_check(w.health == hp and w.guarding, "a cultist's ward blocks a light cut")
+	p.stamina = p.max_stamina
+	p.state = Fighter.State.IDLE
+	p.begin_windup(Fighter.Swing.OVERHEAD)
+	p._drag = DRAGS[Fighter.Swing.OVERHEAD]
+	await _frames(5)
+	p.release_swing(1.0)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	_check(not w.guarding and w.broken_t > 0.0, "an overhead smashes the ward")
+	w.queue_free()
+
+	# Hitting a channelling cultist breaks the spell.
+	var caster := _spawn_dummy(Vector3(0, 0, -1.3))
+	caster.target = p
+	caster.cooldown = 99.0
+	caster._ward_cd = 99.0
+	await _frames(2)
+	caster.state = Fighter.State.IDLE
+	caster.channeling = true
+	caster._channel_t = 0.0
+	await _swing_at(p, caster)
+	_check(not caster.channeling and caster.state == Fighter.State.STAGGER, "a blow interrupts the cultist's channel")
+	caster.queue_free()
+
+	# A brute shrugs off light blows mid-swing, then recovers slowly and exposed.
+	var brute := _spawn_dummy(Vector3(0, 0, -1.6), "brute")
+	brute.health = 400.0
+	brute.facing_angle = PI
+	brute.desired_facing = PI
+	await _frames(2)
+	brute.state = Fighter.State.IDLE
+	brute.begin_windup(Fighter.Swing.OVERHEAD)
+	await _strike(p, brute)
+	_check(brute.state == Fighter.State.WINDUP, "a light cut doesn't stop a brute's overhead")
+	p.invuln_left = 3.0
+	brute._release(2.0)
+	while brute.state == Fighter.State.SWING:
+		await _frames(1)
+	_check(brute.state == Fighter.State.RECOVER and brute.exposed() and brute.recover_time() > 1.0,
+		"the brute's overhead leaves it exposed (%.1fs)" % brute.recover_time())
+	dealt = await _strike(p, brute)
+	_check(dealt > p.weapon_damage * 1.4, "blows on an exposed brute land harder (%.0f)" % dealt)
+	brute.queue_free()
+
+	# A ghoul leaps the gap and lands open.
+	var leaper := _spawn_dummy(Vector3(0, 0, -4.0), "ghoul")
+	leaper.target = p
+	await _frames(2)
+	leaper.state = Fighter.State.IDLE
+	leaper.cooldown = 99.0
+	var gap := leaper.flat_dist(p)
+	leaper.begin_windup(Fighter.Swing.THRUST)
+	leaper.leaping = true
+	var waited := 0
+	while leaper.state != Fighter.State.RECOVER and waited < 120:
+		await _frames(1)
+		waited += 1
+	_check(leaper.flat_dist(p) < gap - 2.0 and leaper.exposed(),
+		"a ghoul leaps in (%.1f m -> %.1f m) and lands exposed" % [gap, leaper.flat_dist(p)])
+	leaper.queue_free()
+	p.invuln_left = 0.0
+	p.health = p.max_health
+	await _frames(5)
 
 
 ## Every weapon with every sigil: E readies it, the next blow releases it.

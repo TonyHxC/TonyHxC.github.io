@@ -4,6 +4,7 @@ extends Node
 ##   (none)        the opening weapon pick
 ##   mask          the mask with a sigil inked on it
 ##   fight         axe and Storm, the first wave up, the power readied
+##   foes          a cultist warding, one channelling, a brute with worn poise
 ##   drawing | prepared    the parchment mid-stroke / with a sigil ready
 ##   poses:<weapon>        close-ups of the hunter's stances; out is a prefix
 
@@ -32,6 +33,25 @@ func _ready() -> void:
 		await get_tree().create_timer(2.0).timeout
 		p.ready_imbue()
 		await get_tree().create_timer(0.3).timeout
+	elif mode == "foes":
+		await main.quick_start("sword", "ember")
+		var ward := _foe(main, "cultist", Vector3(1.6, 0, -1.6))
+		var caster := _foe(main, "cultist", Vector3(-4.5, 0, -3.5))
+		var brute := _foe(main, "brute", Vector3(3.2, 0, 1.8))
+		await get_tree().create_timer(1.5).timeout
+		for e in [ward, caster, brute]:
+			e.target = p
+			e.cooldown = 99.0
+			e._cast_cd = 99.0
+			e._ward_cd = 99.0
+		ward.set_guard(true)
+		ward._ward_t = 99.0
+		caster.channeling = true
+		caster._channel_t = 0.9
+		brute.poise = brute.max_poise * 0.4
+		brute._poise_delay = 99.0
+		main.camera.size = 9.0  # after the start-of-run zoom has finished
+		await get_tree().create_timer(0.3).timeout
 	elif mode.begins_with("poses:"):
 		await _poses(main, mode.get_slice(":", 1), out)
 		get_tree().quit()
@@ -52,6 +72,14 @@ func _ready() -> void:
 		await get_tree().create_timer(0.5, true, false, true).timeout
 	_save(out)
 	get_tree().quit()
+
+
+func _foe(main: Node3D, kind: String, at: Vector3) -> Enemy:
+	var e := Enemy.new()
+	e.setup(kind, null, 1)
+	e.position = main.player.global_position + at
+	main.add_child(e)
+	return e
 
 
 func _save(path: String) -> void:

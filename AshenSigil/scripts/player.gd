@@ -117,6 +117,7 @@ func equip(kind: String) -> void:
 	lunge_mult = s.lunge
 	stun_bonus = s.stun
 	dodge_cost = s.dodge
+	poise_power = s.poise
 	whirl = kind == "flail"
 	if model:
 		model.set_weapon(kind)
@@ -336,14 +337,14 @@ func _strike_damage(o: Fighter, dmg: float) -> float:
 
 
 func _on_strike(o: Fighter, result: String) -> void:
-	if imbue_armed and (result == "hit" or result == "blocked"):
+	if imbue_armed and (result == "hit" or result == "broke" or result == "blocked"):
 		imbue_armed = false
 		imbue_cd = Imbue.COOLDOWN
 		Imbue.unleash(weapon, mask_glyph, mask_power, self, o)
 
 
-func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: float, can_block := true) -> String:
-	var result := super.take_hit(attacker, dmg, dir, force, stun, can_block)
+func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: float, can_block := true, poise_dmg := -1.0) -> String:
+	var result := super.take_hit(attacker, dmg, dir, force, stun, can_block, poise_dmg)
 	if result == "parried":
 		riposte_t = 1.5
 	return result

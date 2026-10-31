@@ -34,6 +34,22 @@ weapon glows), and the next blow that lands sets it off. It then recharges for 9
 | Axe | Molten Cleave: a great fire burst | Skyfall: a bolt, and everything near it is stunned | Earthsplitter: a shockwave from the impact |
 | Flail | Comet: fire all around you, igniting foes | Tempest: lightning at every foe within 6 m | Pendulum: the foe is flung into the others |
 
+## Foes and posture
+
+Blows wear down a foe's **poise** (the thin gold bar over its head). While any is
+left a hit only makes it flinch, and its attack carries on. At zero its posture
+**breaks**: it's down for a moment, the bar flashes, and blows land 30% harder.
+Overheads, finishers and heavies wear poise fastest, and the axe most of all.
+
+| Foe | Poise | What to read and punish |
+|---|---|---|
+| Ghoul | none (every blow staggers) | Crouches, then leaps from a few paces. Sidestep it; it lands exposed |
+| Cultist | some | Raises a violet ward when it sees your wind-up coming. Light cuts are blocked; an overhead, finisher or heavy smashes it, or circle round. At range it channels a glowing orb, then fire erupts under you: hit it to break the channel, or get out of the ring |
+| Brute | heavy (light blows only flinch it) | A slow overhead that keeps coming through your hits and breaks a guard. Dodge it; the long recovery leaves it exposed |
+
+Exposed foes take 50% more damage and twice the poise damage. Only the hunter
+can parry.
+
 ## Controls
 
 | Input | Action |

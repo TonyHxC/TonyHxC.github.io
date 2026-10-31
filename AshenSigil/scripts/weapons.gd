@@ -5,31 +5,32 @@ class_name Weapons
 const ORDER := ["sword", "dagger", "axe", "flail"]
 
 ## time / recover scale the cut and its recovery, stamina the cost, force the
-## knockback, arc the width of a slash, lunge the step into it.
+## knockback, arc the width of a slash, lunge the step into it, poise how hard
+## blows wear down a foe's posture.
 const STATS := {
 	"sword": {
 		"title": "Sword",
 		"blurb": "Balanced in every cut. A parry readies a riposte that strikes twice as hard.",
 		"damage": 24.0, "reach": 1.7, "time": 1.0, "recover": 1.0, "stamina": 1.0,
-		"force": 1.0, "arc": 1.0, "lunge": 1.0, "stun": 0.0, "dodge": 22.0,
+		"force": 1.0, "arc": 1.0, "lunge": 1.0, "stun": 0.0, "dodge": 22.0, "poise": 1.0,
 	},
 	"dagger": {
 		"title": "Dagger",
 		"blurb": "Quick, cheap and close. Strikes from behind cut three times as deep.",
 		"damage": 14.0, "reach": 1.25, "time": 0.6, "recover": 0.55, "stamina": 0.55,
-		"force": 0.6, "arc": 0.75, "lunge": 1.4, "stun": 0.0, "dodge": 13.0,
+		"force": 0.6, "arc": 0.75, "lunge": 1.4, "stun": 0.0, "dodge": 13.0, "poise": 0.6,
 	},
 	"axe": {
 		"title": "Axe",
-		"blurb": "Slow and brutal. Every blow staggers long and hurls the dead into each other.",
+		"blurb": "Slow and brutal. Shatters posture and wards, and hurls the dead into each other.",
 		"damage": 34.0, "reach": 1.75, "time": 1.35, "recover": 1.3, "stamina": 1.35,
-		"force": 1.7, "arc": 1.1, "lunge": 0.8, "stun": 0.45, "dodge": 22.0,
+		"force": 1.7, "arc": 1.1, "lunge": 0.8, "stun": 0.45, "dodge": 22.0, "poise": 1.5,
 	},
 	"flail": {
 		"title": "Flail",
 		"blurb": "Long, sweeping arcs. The thrust becomes a whirl that strikes all around you.",
 		"damage": 27.0, "reach": 2.15, "time": 1.2, "recover": 1.25, "stamina": 1.2,
-		"force": 1.3, "arc": 1.15, "lunge": 0.7, "stun": 0.1, "dodge": 22.0,
+		"force": 1.3, "arc": 1.15, "lunge": 0.7, "stun": 0.1, "dodge": 22.0, "poise": 1.15,
 	},
 }
 

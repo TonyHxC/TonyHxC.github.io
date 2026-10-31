@@ -125,6 +125,8 @@ func _on_draw() -> void:
 	_text_c(Vector2(0, 40), s.x, "Wave %d" % wave if wave > 0 else "", 26, Color(0.75, 0.12, 0.08))
 	_text_c(Vector2(0, 64), s.x, "%d slain" % kills if kills > 0 else "", 14, Color(0.6, 0.55, 0.5))
 
+	_poise_bars()
+
 	# Swing read-out while winding up.
 	if player.state == Fighter.State.WINDUP:
 		var w := 180.0
@@ -155,6 +157,31 @@ func _on_draw() -> void:
 		_text_c(Vector2(0, s.y * 0.45), s.x, "YOU HAVE FALLEN", 52, Color(0.7, 0.06, 0.04))
 		_text_c(Vector2(0, s.y * 0.45 + 44), s.x, "Wave %d   %d slain" % [wave, kills], 18, Color(0.75, 0.7, 0.65))
 		_text_c(Vector2(0, s.y * 0.45 + 74), s.x, "Press R to rise again", 18, Color(0.85, 0.8, 0.7))
+
+
+## A thin bar over each foe whose poise has been worn: how close its posture is
+## to breaking. A broken posture flashes until it recovers.
+func _poise_bars() -> void:
+	var cam := Game.camera
+	if cam == null:
+		return
+	for n in get_tree().get_nodes_in_group("fighters"):
+		var e := n as Enemy
+		if e == null or e.is_dead() or e.max_poise <= 0.0:
+			continue
+		if e.poise >= e.max_poise and e.broken_t <= 0.0:
+			continue
+		var top := e.visual_position() + Vector3(0, 2.15 * e.body_scale, 0)
+		if cam.is_position_behind(top):
+			continue
+		var sp := cam.unproject_position(top)
+		var r := Rect2(sp.x - 22.0, sp.y, 44.0, 4.0)
+		_root.draw_rect(r.grow(1.5), Color(0.02, 0.01, 0.01, 0.8))
+		if e.broken_t > 0.0:
+			var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 60.0)
+			_root.draw_rect(r, Color(1.0, 0.85, 0.55).lerp(Color(0.8, 0.15, 0.08), flash))
+		else:
+			_root.draw_rect(Rect2(r.position, Vector2(r.size.x * e.poise / e.max_poise, r.size.y)), Color(0.85, 0.68, 0.32))
 
 
 ## The weapon, the sigil on the mask and the state of its power (E).

@@ -14,6 +14,13 @@ const SWING_NAMES := ["Slash  <-", "Slash  ->", "Overhead", "Thrust"]
 const SWING_TIME := [0.26, 0.26, 0.34, 0.2]
 const RECOVER_TIME := [0.3, 0.3, 0.5, 0.26]
 const SWING_DAMAGE := [1.0, 1.0, 1.4, 1.1]
+## Poise each cut wears off a target, before weapon and heavy/finisher scaling.
+const SWING_POISE := [20.0, 20.0, 34.0, 24.0]
+## A blow carrying this much poise smashes through a raised guard (any
+## full-strength overhead, a finisher or a heavy).
+const GUARD_BREAK := 34.0
+## How long a broken posture keeps a fighter down, open to harder blows.
+const BROKEN_TIME := 1.6
 const WEAPON_POS := Vector3(0.27, 1.42, -0.02)  # the sword shoulder
 const IDLE_POSE := Vector3(-0.35, -0.35, 0.0)
 const GUARD_POSE := Vector3(0.55, 1.2, 0.0)
@@ -59,6 +66,20 @@ var recover_move := 0.45
 var windup_turn := 7.0
 ## Extra deceleration when stopping or reversing (1 = same as speeding up).
 var brake := 1.0
+## Poise: blows wear it down, and while any is left a hit only flinches (no
+## stagger, little shove), so the attack carries on. At zero the posture
+## breaks: a long stagger, and blows land harder until it recovers.
+## 0 means every hit staggers.
+var max_poise := 0.0
+var poise := 0.0
+## How hard this fighter's blows wear down poise.
+var poise_power := 1.0
+## > 0 while the posture is broken (seconds left).
+var broken_t := 0.0
+## Per-swing stretch of the cut and its recovery, set by the AI after a
+## release (a ghoul's leap is a long thrust; a brute's overhead recovers slowly).
+var swing_slow := 1.0
+var recover_slow := 1.0
 
 var health := 0.0
 var stamina := 0.0
@@ -104,6 +125,7 @@ var _step := 0.0
 var _impact_done := false
 ## > 0 while the body shakes from a blow (real seconds).
 var _jolt := 0.0
+var _poise_delay := 0.0
 var _pos_prev := Vector3.ZERO
 var _pos_now := Vector3.ZERO
 
@@ -111,6 +133,7 @@ var _pos_now := Vector3.ZERO
 func _ready() -> void:
 	health = max_health
 	stamina = max_stamina
+	poise = max_poise
 	add_to_group("fighters")
 	collision_layer = 2
 	collision_mask = 1 | 2
@@ -314,11 +337,11 @@ func swing_name() -> String:
 
 
 func swing_time() -> float:
-	return (0.5 if is_whirl() else SWING_TIME[swing_type]) * swing_time_mult
+	return (0.5 if is_whirl() else SWING_TIME[swing_type]) * swing_time_mult * swing_slow
 
 
 func recover_time() -> float:
-	return RECOVER_TIME[swing_type] * recover_mult * (1.3 if swing_heavy else 1.0) * (1.4 if swing_finisher else 1.0)
+	return RECOVER_TIME[swing_type] * recover_mult * recover_slow * (1.3 if swing_heavy else 1.0) * (1.4 if swing_finisher else 1.0)
 
 
 func swing_progress() -> float:
@@ -348,6 +371,7 @@ func _step_physics(delta: float) -> void:
 	if guarding:
 		guard_time += delta
 	_tick_state()
+	_tick_poise(delta)
 	_tick_burn(delta)
 	if state == State.DEAD:
 		return
@@ -381,6 +405,19 @@ func _tick_state() -> void:
 		State.DODGE:
 			if state_time >= DODGE_TIME:
 				_set_state(State.IDLE)
+
+
+func _tick_poise(delta: float) -> void:
+	if broken_t > 0.0:
+		broken_t -= delta
+		if broken_t <= 0.0:
+			poise = max_poise  # back on their feet, steady again
+		return
+	if max_poise <= 0.0:
+		return
+	_poise_delay -= delta
+	if _poise_delay <= 0.0:
+		poise = minf(max_poise, poise + max_poise * 0.5 * delta)
 
 
 ## Sets the fighter alight: it loses health steadily, without staggering.
@@ -525,6 +562,8 @@ func release_swing(power: float, heavy := false, finisher := false) -> void:
 	swing_power = power
 	swing_heavy = heavy
 	swing_finisher = finisher
+	swing_slow = 1.0
+	recover_slow = 1.0
 	_impact_done = false
 	var cost := (10.0 + 8.0 * power) * (1.3 if swing_type == Swing.OVERHEAD or is_whirl() else 1.0) * stamina_mult
 	stamina = maxf(0.0, stamina - cost)
@@ -630,7 +669,8 @@ func _deliver(o: Fighter) -> void:
 	var dmg := _strike_damage(o, weapon_damage * swing_power * SWING_DAMAGE[swing_type] * (1.35 if swing_finisher else 1.0))
 	var force := (2.5 + 3.5 * swing_power) * (1.5 if swing_type == Swing.OVERHEAD else 1.0) * force_mult * (1.4 if big else 1.0)
 	var stun := 0.2 + 0.35 * swing_power + stun_bonus + (0.35 if swing_heavy else 0.0) + (0.3 if swing_finisher else 0.0)
-	var result := o.take_hit(self, dmg, dir, force, stun)
+	var pd: float = (22.0 if is_whirl() else SWING_POISE[swing_type]) * poise_power * (1.8 if swing_heavy else 1.0) * (1.5 if swing_finisher else 1.0)
+	var result := o.take_hit(self, dmg, dir, force, stun, true, pd)
 	_on_strike(o, result)
 	match result:
 		"parried":
@@ -641,6 +681,10 @@ func _deliver(o: Fighter) -> void:
 		"blocked":
 			impulse -= dir * 1.5
 			Game.hitstop(0.04)
+		"broke":
+			# The target's posture or guard gave way; it punctuates itself.
+			o.jolt(0.16)
+			_impact_done = true
 		"hit":
 			# Graded impact: a light cut is a flick, a heavy or finisher lands, a
 			# kill or a blow on the hunter is the loudest. One pause per swing.
@@ -671,20 +715,31 @@ func _on_strike(_o: Fighter, _result: String) -> void:
 	pass
 
 
-## Returns "hit", "blocked", "parried", "dodged" or "none".
-func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: float, can_block := true) -> String:
+## Returns "hit", "broke" (posture or guard gave way), "blocked", "parried",
+## "dodged" or "none". poise_dmg < 0 derives it from the stun (spells, slams).
+func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: float, can_block := true, poise_dmg := -1.0) -> String:
 	if state == State.DEAD:
 		return "none"
 	if invuln_left > 0.0:
 		return "dodged"
+	if poise_dmg < 0.0:
+		poise_dmg = 20.0 + 30.0 * stun
 	if can_block and guarding:
 		var to_att := attacker.global_position - global_position
 		to_att.y = 0.0
 		if forward().dot(to_att.normalized()) > 0.25:
 			var spark_pos := global_position + Vector3(0, 1.3, 0) + forward() * 0.5
-			if guard_time < PARRY_WINDOW:
+			if guard_time < PARRY_WINDOW and team == 0:
+				# Only the hunter parries; a foe's raised guard just blocks.
 				Fx.sparks(spark_pos, Color(1.0, 0.9, 0.5), 30)
 				return "parried"
+			if poise_dmg >= GUARD_BREAK:
+				# Too heavy to hold: the guard is smashed aside.
+				Fx.sparks(spark_pos, Color(1.0, 0.85, 0.6), 26)
+				guarding = false
+				impulse += dir * force * 0.6
+				_break(BROKEN_TIME * 0.7)
+				return "broke"
 			Fx.sparks(spark_pos, Color(1.0, 0.6, 0.3), 12)
 			stamina -= dmg * 1.2
 			stamina_delay = 0.8
@@ -693,16 +748,39 @@ func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: fl
 				stamina = 0.0
 				stagger(0.9)
 			return "blocked"
-	health -= dmg
-	impulse += dir * force
+	health -= dmg * (1.3 if broken_t > 0.0 else 1.0)
 	_flash = 1.0
 	Fx.blood(global_position + Vector3(0, 1.1, 0), dir, dmg)
 	hurt.emit(self, dmg)
 	if health <= 0.0:
+		impulse += dir * force
 		die(dir)
-	else:
-		stagger(stun)
+		return "hit"
+	if max_poise <= 0.0 or broken_t > 0.0:
+		impulse += dir * force
+		stagger(maxf(stun, 0.4) if broken_t > 0.0 else stun)
+		return "hit"
+	poise -= poise_dmg
+	_poise_delay = 1.2
+	if poise <= 0.0:
+		impulse += dir * force
+		_break(BROKEN_TIME)
+		return "broke"
+	# Poise holds: a flinch, and whatever they were doing carries on.
+	impulse += dir * force * 0.25
+	jolt(0.1)
 	return "hit"
+
+
+## The posture gives way: down for a while, and blows land harder.
+func _break(seconds: float) -> void:
+	broken_t = seconds
+	poise = 0.0
+	stagger(seconds)
+	Fx.sparks(global_position + Vector3(0, 1.4, 0), Color(1.0, 0.9, 0.7), 28)
+	Sfx.play("break", self)
+	Game.hitstop(0.12)
+	Game.shake(0.4)
 
 
 func die(dir: Vector3) -> void:

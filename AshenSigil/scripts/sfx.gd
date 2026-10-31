@@ -14,6 +14,7 @@ static func get_sound(key: String) -> AudioStreamWAV:
 			"chime": _cache[key] = _chime()
 			"ignite": _cache[key] = _ignite()
 			"ready": _cache[key] = _ready_ring()
+			"break": _cache[key] = _clang()
 	return _cache.get(key)
 
 
@@ -52,6 +53,35 @@ static func _ignite() -> AudioStreamWAV:
 		var t := float(i) / n
 		lp = lerpf(lp, randf_range(-1.0, 1.0), 0.12 + 0.3 * t)
 		out[i] = lp * smoothstep(0.0, 0.12, t) * pow(1.0 - t, 1.5) * 0.9
+	return _wav(out)
+
+
+## Plays a sound once from a node's position in the world, then cleans up.
+static func play(key: String, at: Node3D, volume_db := -4.0) -> void:
+	if Game.world == null or not at.is_inside_tree():
+		return
+	var p := AudioStreamPlayer3D.new()
+	p.stream = get_sound(key)
+	p.volume_db = volume_db
+	p.unit_size = 14.0
+	Game.world.add_child(p)
+	p.global_position = at.global_position
+	p.finished.connect(p.queue_free)
+	p.play()
+
+
+## A low, cracking clang with a rattle: a posture or guard gives way.
+static func _clang() -> AudioStreamWAV:
+	var n := int(RATE * 0.45)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var lp := 0.0
+	for i in n:
+		var s := float(i) / RATE
+		var t := float(i) / n
+		lp = lerpf(lp, randf_range(-1.0, 1.0), 0.5)
+		var tone := sin(TAU * 310.0 * s) + 0.7 * sin(TAU * 467.0 * s) + 0.4 * sin(TAU * 1240.0 * s)
+		out[i] = (tone * 0.3 + lp * 0.5 * exp(-t * 18.0)) * exp(-t * 6.0) * 0.5
 	return _wav(out)
 
 
