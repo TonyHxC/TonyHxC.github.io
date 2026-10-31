@@ -130,7 +130,7 @@ func _on_draw() -> void:
 		var w := 180.0
 		var r := Rect2((s.x - w) * 0.5, s.y - 120, w, 6)
 		_bar(r, player.charge(), Color(1.0, 0.75, 0.35))
-		_text_c(Vector2(0, s.y - 128), s.x, player.swing_name(), 18, Color(1.0, 0.85, 0.6))
+		_text_c(Vector2(0, s.y - 128), s.x, player.windup_label(), 18, Color(1.0, 0.55, 0.25) if player.heavy_ready() else Color(1.0, 0.85, 0.6))
 
 	if _toast_t > 0.0:
 		var col := _toast_color
@@ -140,8 +140,8 @@ func _on_draw() -> void:
 	if show_help and player.ready_to_fight:
 		var lines := [
 			"WASD  move          Mouse  aim",
-			"Hold LMB  wind up   drag while holding: <- -> slash, down overhead, up %s" % ("whirl" if player.whirl else "thrust"),
-			"Release  swing      longer hold = heavier, more stamina",
+			"LMB  cut (taps run slash, reverse slash, finisher)   hold until it flares: heavy",
+			"Drag while holding: <- -> slash, down overhead, up %s" % ("whirl" if player.whirl else "thrust"),
 			"RMB  guard (tap just before a hit to parry)",
 			"Space  dodge        Wheel  zoom         H  hide help",
 			"Q  sigil mode: draw anywhere, release, then click to cast   (Tab: sigil guides)",

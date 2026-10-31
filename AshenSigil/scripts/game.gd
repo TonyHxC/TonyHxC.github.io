@@ -12,6 +12,8 @@ var slowmo_scale := 0.6
 ## Unscaled frame time, for UI that must not slow down with the world.
 var real_delta := 0.0
 var _hitstop := 0.0
+## How many hit-stops have been asked for (tests check one sweep pauses once).
+var hitstop_count := 0
 var _last_us := 0
 
 
@@ -35,6 +37,7 @@ func _process(_delta: float) -> void:
 
 func hitstop(seconds: float) -> void:
 	_hitstop = maxf(_hitstop, seconds)
+	hitstop_count += 1
 
 
 func shake(amount: float) -> void:

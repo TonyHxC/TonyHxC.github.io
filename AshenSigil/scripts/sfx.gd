@@ -13,6 +13,7 @@ static func get_sound(key: String) -> AudioStreamWAV:
 			"scratch": _cache[key] = _scratch()
 			"chime": _cache[key] = _chime()
 			"ignite": _cache[key] = _ignite()
+			"ready": _cache[key] = _ready_ring()
 	return _cache.get(key)
 
 
@@ -51,6 +52,18 @@ static func _ignite() -> AudioStreamWAV:
 		var t := float(i) / n
 		lp = lerpf(lp, randf_range(-1.0, 1.0), 0.12 + 0.3 * t)
 		out[i] = lp * smoothstep(0.0, 0.12, t) * pow(1.0 - t, 1.5) * 0.9
+	return _wav(out)
+
+
+## A short, bright metallic ring: a heavy blow is charged.
+static func _ready_ring() -> AudioStreamWAV:
+	var n := int(RATE * 0.35)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var s := float(i) / RATE
+		var tone := sin(TAU * 1180.0 * s) + 0.5 * sin(TAU * 2950.0 * s) + 0.25 * sin(TAU * 4410.0 * s)
+		out[i] = tone * exp(-float(i) / n * 9.0) * 0.2
 	return _wav(out)
 
 

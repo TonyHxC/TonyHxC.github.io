@@ -1,7 +1,8 @@
 class_name Player
 extends Fighter
-## Hold LMB to wind up, drag the mouse while holding to pick the cut,
-## release to swing. RMB guards (early guard = parry), Space dodges,
+## Tap LMB for a cut; hold it until the weapon flares for a heavy blow. Taps
+## run a string: slash, reverse slash, finisher. Dragging while holding picks
+## a particular cut instead. RMB guards (early guard = parry), Space dodges,
 ## Q opens the parchment to ink a sigil, E readies the mask's power.
 ## A wind-up can be feinted into a guard or dodge, and the next attack, guard
 ## or dodge can cut a recovery short.
@@ -11,15 +12,19 @@ signal glyph_requested
 
 const CAM_FWD := Vector3(-0.70710678, 0.0, -0.70710678)
 const CAM_RIGHT := Vector3(0.70710678, 0.0, -0.70710678)
-const FULL_CHARGE := 0.7
 const DRAG_DEADZONE := 25.0
 const SPELL_REACH := 9.0
-## A click that lands while you're still busy is remembered this long (real seconds).
-const ATTACK_BUFFER := 0.4
-## A buffered click that was already released still winds up this long before swinging.
+## A click that lands while you're still busy is remembered this long (real
+## seconds). Short, so you don't swing after you've changed your mind.
+const ATTACK_BUFFER := 0.25
+## Even a tap winds up this long, so the cut has a readable anticipation.
 const TAP_WINDUP := 0.08
 ## A dodge pressed while still busy is remembered this long (real seconds).
-const DODGE_BUFFER := 0.3
+const DODGE_BUFFER := 0.2
+## Tapping again within this long of a cut ending carries the string on.
+const COMBO_WINDOW := 0.45
+## The light string: slash, reverse slash, then a committed finisher.
+const COMBO := [Fighter.Swing.SLASH_RL, Fighter.Swing.SLASH_LR, Fighter.Swing.OVERHEAD]
 ## Soft lock: foes within this angle of where you aimed draw your swing to them.
 const LOCK_CONE := 0.9
 ## The most the release nudges you onto a foe; the wind-up does the rest of the turn.
@@ -48,8 +53,13 @@ var imbue_cd := 0.0
 ## > 0 after a parry: the sword's next blow is a riposte.
 var riposte_t := 0.0
 
+## Which cut of the light string comes next (0..2).
+var combo_step := 0
+
 var _drag := Vector2.ZERO
-var _combo_flip := false
+var _since_swing := 0.0
+var _heavy_cued := false
+var _ready_sfx: AudioStreamPlayer
 var _buffer_t := 0.0
 var _buffer_released := false
 var _auto_release := false
@@ -66,9 +76,12 @@ func _init() -> void:
 	# The hunter keeps most of their footwork while attacking and turns quickly
 	# onto a target while winding up.
 	windup_move = 0.75
-	swing_move = 0.4
+	swing_move = 0.55
 	recover_move = 0.7
 	windup_turn = 12.0
+	# Quick to start and quicker to stop or turn back.
+	accel = 30.0
+	brake = 2.5
 	equip("sword")
 
 
@@ -141,6 +154,10 @@ func _dress() -> void:
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lantern.set_script(preload("res://scripts/flicker.gd"))
 	smooth.add_child(lantern)
+	_ready_sfx = AudioStreamPlayer.new()
+	_ready_sfx.stream = Sfx.get_sound("ready")
+	_ready_sfx.volume_db = -8.0
+	add_child(_ready_sfx)
 
 
 func _think(delta: float) -> void:
@@ -151,6 +168,12 @@ func _think(delta: float) -> void:
 		return
 	imbue_cd = maxf(0.0, imbue_cd - delta)
 	riposte_t = maxf(0.0, riposte_t - delta)
+	_since_swing = _since_swing + delta if state == State.IDLE else 0.0
+	# After a plain tap, aim follows the cursor again as soon as the cut is done.
+	# After a drag (which moved the cursor to pick the cut) it holds until you
+	# move the mouse, so the hunter doesn't whip round.
+	if _aim_held and _drag.length() < DRAG_DEADZONE and state != State.WINDUP and state != State.SWING and _buffer_t <= 0.0:
+		_aim_held = false
 	_update_aim()
 	var iv := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	move_input = CAM_RIGHT * iv.x + CAM_FWD * iv.y
@@ -168,6 +191,7 @@ func _think(delta: float) -> void:
 		_set_state(State.IDLE)
 		_auto_release = false
 		_buffer_t = 0.0
+		combo_step = 0
 	set_guard(want_guard and state == State.IDLE)
 	winded_t = maxf(0.0, winded_t - Game.real_delta)
 	if _dodge_buffer_t > 0.0:
@@ -183,6 +207,11 @@ func _think(delta: float) -> void:
 		set_windup_type(_drag_to_swing())
 		if _auto_release and state_time >= TAP_WINDUP:
 			_release()
+		elif not _heavy_cued and state_time >= heavy_time():
+			# Charged: the weapon flares and rings, and releasing now is a heavy blow.
+			_heavy_cued = true
+			_ready_sfx.play()
+			Fx.sparks(global_position + Vector3(0, 1.3, 0) + forward() * 0.4, windup_glow, 12)
 	super._think(delta)
 
 
@@ -206,7 +235,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_buffer_released = false
 	elif event.is_action_released("attack"):
 		if state == State.WINDUP:
-			_release()
+			if state_time < TAP_WINDUP:
+				_auto_release = true  # swings as soon as the short wind-up has read
+			else:
+				_release()
 		elif _buffer_t > 0.0:
 			_buffer_released = true
 	elif event is InputEventMouseMotion:
@@ -225,8 +257,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _try_windup() -> bool:
+	if _since_swing > COMBO_WINDOW:
+		combo_step = 0  # paused too long: the string starts over
 	if begin_windup(_default_slash()):
 		_auto_release = false
+		_heavy_cued = false
 		return true
 	if can_attack() and stamina < 5.0:
 		winded_t = 0.5
@@ -234,16 +269,38 @@ func _try_windup() -> bool:
 
 
 func _dodge() -> bool:
-	return dodge(move_input if move_input.length() > 0.1 else -forward())
+	if dodge(move_input if move_input.length() > 0.1 else -forward()):
+		combo_step = 0
+		return true
+	return false
+
+
+## How long to hold for a heavy blow; quicker with light weapons.
+func heavy_time() -> float:
+	return clampf(0.5 * swing_time_mult, 0.35, 0.65)
+
+
+## True when releasing now would be a heavy blow.
+func heavy_ready() -> bool:
+	return state == State.WINDUP and not _auto_release and state_time >= heavy_time()
+
+
+## True when releasing now would be the finisher of the light string.
+func finisher_next() -> bool:
+	return combo_step == COMBO.size() - 1 and _drag.length() < DRAG_DEADZONE and not heavy_ready()
 
 
 func _release() -> void:
-	# A click remembered from mid-swing comes out as a normal blow, not the weakest.
-	var power := 1.0 if _auto_release else remap(clampf(state_time, 0.1, FULL_CHARGE), 0.1, FULL_CHARGE, 0.6, 1.5)
+	# Any release short of the charge is an ordinary, full-strength cut; a tap
+	# isn't a weak mistake. Holding to the flare is a heavy.
+	var heavy := heavy_ready()
+	var finisher := finisher_next()
+	var chosen := _drag.length() >= DRAG_DEADZONE
 	_auto_release = false
 	_assist_aim()
-	release_swing(power)
-	_combo_flip = not _combo_flip
+	release_swing(1.5 if heavy else 1.0, heavy, finisher)
+	# Heavies and hand-picked cuts start the string over; taps carry it on.
+	combo_step = 0 if heavy or chosen else (combo_step + 1) % COMBO.size()
 
 
 ## E: wakes the mask's sigil in the weapon; the next blow that lands releases it.
@@ -293,7 +350,14 @@ func take_hit(attacker: Node3D, dmg: float, dir: Vector3, force: float, stun: fl
 
 
 func charge() -> float:
-	return clampf(state_time / FULL_CHARGE, 0.0, 1.0) if state == State.WINDUP else 0.0
+	return clampf(state_time / heavy_time(), 0.0, 1.0) if state == State.WINDUP else 0.0
+
+
+## What the HUD calls the cut being wound up.
+func windup_label() -> String:
+	if heavy_ready():
+		return "Heavy " + swing_name()
+	return "Finisher" if finisher_next() else swing_name()
 
 
 func add_paper(n: int) -> void:
@@ -332,7 +396,38 @@ func _animate(delta: float) -> void:
 		State.SWING: flung = 1.0
 		State.WINDUP: flung = 0.5
 	rig.spin = flung
-	model.update_locomotion(Vector2(move_vel.x, move_vel.z).length())
+	var speed := Vector2(move_vel.x, move_vel.z).length()
+	_pose_body(rig, speed, delta)
+	model.update_locomotion(speed)
+
+
+## The body sells the blow, exaggerated to read from the high camera: the torso
+## winds away from the cut and turns through it, leans back into an overhead
+## and over a thrust, and the legs plant a stance (fuller for heavier blows).
+func _pose_body(rig: ArmRig, speed: float, delta: float) -> void:
+	var p := weapon_pivot.rotation
+	var twist := clampf(p.y * 0.32, -0.7, 0.7) * rig.aim
+	var lean := clampf((0.3 - p.x) * 0.15, -0.22, 0.3) * rig.aim
+	var stance := 0.0
+	var committed := swing_heavy or swing_finisher or swing_type == Swing.OVERHEAD or swing_type == Swing.THRUST
+	match state:
+		State.WINDUP:
+			committed = committed or heavy_ready() or finisher_next()
+			stance = 1.0 if committed else 0.55
+		State.SWING:
+			stance = 1.0 if committed else 0.6
+			if swing_type == Swing.THRUST and not whirl:
+				lean += 0.22  # reach over the point
+		State.RECOVER:
+			stance = (1.0 if committed else 0.6) * (1.0 - state_time / maxf(recover_time(), 0.01))
+	if is_whirl():
+		twist = 0.0  # the whole body spins instead
+	# Walking legs and a planted stance fight each other; ease off on the move.
+	stance *= clampf(1.2 - speed / 4.0, 0.3, 1.0)
+	var k := 1.0 - exp(-14.0 * delta)
+	rig.twist = lerpf(rig.twist, twist, k)
+	rig.lean = lerpf(rig.lean, lean, k)
+	rig.stance = lerpf(rig.stance, stance, 1.0 - exp(-8.0 * delta))
 
 
 ## While the mask's power is ready the weapon burns in its sigil's colour, and
@@ -345,6 +440,11 @@ func _update_glow(delta: float) -> void:
 		weapon_mat.emission_energy_multiplier = 1.6 + 0.8 * sin(t * 9.0)
 	else:
 		weapon_mat.emission = windup_glow
+		if state == State.WINDUP and not _auto_release:
+			# A low warmth while charging; at the charge, a flare that settles to a
+			# steady burn, so a heavy is unmistakable.
+			var over := state_time - heavy_time()
+			weapon_mat.emission_energy_multiplier = 0.8 * charge() if over < 0.0 else 2.5 + 4.0 * exp(-over * 10.0)
 	if model.mask_mat and mask_glyph != "":
 		var lit := 1.4 if imbue_armed else (0.35 + 0.2 * sin(t * 2.5) if imbue_cd <= 0.0 else 0.0)
 		model.mask_mat.emission_energy_multiplier = lit
@@ -382,7 +482,7 @@ func _lock_target() -> Fighter:
 
 
 func _default_slash() -> Swing:
-	return Swing.SLASH_LR if _combo_flip else Swing.SLASH_RL
+	return COMBO[combo_step]
 
 
 func _drag_to_swing() -> Swing:

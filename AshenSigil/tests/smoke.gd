@@ -457,6 +457,102 @@ func _test_flow() -> void:
 	while p.state != Fighter.State.IDLE:
 		await _frames(1)
 	p._aim_held = false
+	await _test_attack_input()
+
+
+## Tap for a full cut, hold for a heavy; taps run slash, reverse, finisher.
+func _test_attack_input() -> void:
+	var p: Player = main.player
+	p.equip("sword")
+	p.stamina = p.max_stamina
+	p.combo_step = 0
+	await _frames(40)  # let any old string lapse
+
+	# A tap is an ordinary, full-strength cut, and aim is free once it's done.
+	_click(p, true)
+	_check(p._aim_held, "a click holds aim through the cut")
+	_click(p, false)
+	while p.state != Fighter.State.SWING:
+		await _frames(1)
+	_check(is_equal_approx(p.swing_power, 1.0) and not p.swing_heavy, "a tap swings at full strength (%.2f)" % p.swing_power)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	await _frames(1)
+	_check(not p._aim_held, "after a tap, aim follows the cursor again")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# Holding to the flare is a heavy.
+	p.stamina = p.max_stamina
+	_click(p, true)
+	while p.state_time < p.heavy_time() + 0.05:
+		await _frames(1)
+	_check(p.heavy_ready() and p._heavy_cued, "holding charges a heavy and cues it")
+	_click(p, false)
+	await _frames(1)
+	_check(p.swing_heavy and p.swing_power > 1.4, "releasing at the flare swings heavy")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# Taps in rhythm: slash, reverse slash, finisher.
+	p.combo_step = 0
+	p._since_swing = 0.0
+	var cuts := []
+	var finishers := []
+	for i in 3:
+		p.stamina = p.max_stamina
+		while not p.can_attack():
+			await _frames(1)
+		_click(p, true)
+		_click(p, false)
+		while p.state != Fighter.State.SWING:
+			await _frames(1)
+		cuts.append(p.swing_type)
+		finishers.append(p.swing_finisher)
+	_check(cuts == [Fighter.Swing.SLASH_RL, Fighter.Swing.SLASH_LR, Fighter.Swing.OVERHEAD] and finishers == [false, false, true],
+		"taps run slash, reverse slash, finisher (%s)" % [cuts])
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# Pausing starts the string over.
+	p.stamina = p.max_stamina
+	p.combo_step = 1
+	await _frames(int((Player.COMBO_WINDOW + 0.15) * 60.0))
+	_click(p, true)
+	_click(p, false)
+	_check(p.swing_type == Fighter.Swing.SLASH_RL, "a pause starts the string over")
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
+
+	# One sweep through a crowd pauses the game once.
+	p.equip("sword")
+	p.stamina = p.max_stamina
+	var row: Array[Enemy] = []
+	for x in [-1.0, 0.0, 1.0]:
+		row.append(_spawn_dummy(Vector3(x, 0, -1.3 + absf(x) * 0.3)))
+	await _frames(2)
+	p.facing_locked = true
+	p.facing_angle = 0.0
+	p.desired_facing = 0.0
+	var before := Game.hitstop_count
+	var hp := 0.0
+	for e in row:
+		hp += e.health
+	p.begin_windup(Fighter.Swing.SLASH_RL)
+	await _frames(3)
+	p.release_swing(1.0)
+	while p.state == Fighter.State.SWING:
+		await _frames(1)
+	var after := 0.0
+	for e in row:
+		after += e.health
+	_check(after < hp - 30.0 and Game.hitstop_count - before == 1,
+		"one sweep through three foes pauses once (%d pauses)" % (Game.hitstop_count - before))
+	for e in row:
+		e.queue_free()
+	p.facing_locked = false
+	while p.state != Fighter.State.IDLE:
+		await _frames(1)
 
 
 func _test_spells() -> void:

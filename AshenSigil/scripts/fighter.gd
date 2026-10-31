@@ -57,6 +57,8 @@ var windup_move := 0.5
 var swing_move := 0.2
 var recover_move := 0.45
 var windup_turn := 7.0
+## Extra deceleration when stopping or reversing (1 = same as speeding up).
+var brake := 1.0
 
 var health := 0.0
 var stamina := 0.0
@@ -64,6 +66,10 @@ var state := State.IDLE
 var state_time := 0.0
 var swing_type := Swing.SLASH_RL
 var swing_power := 1.0
+## A charged blow (held to the end of the wind-up), and the last cut of a combo.
+## Both hit harder and stagger longer, and cost more recovery.
+var swing_heavy := false
+var swing_finisher := false
 var facing_angle := 0.0
 var desired_facing := 0.0
 var move_input := Vector3.ZERO
@@ -93,6 +99,11 @@ var _burn_by: Fighter
 var _burn_spark := 0.0
 ## The lunge still to cover this swing, in metres (see _move).
 var _step := 0.0
+## Only a swing's first blow pauses the game, so one sweep through a crowd
+## doesn't stall it again for every foe.
+var _impact_done := false
+## > 0 while the body shakes from a blow (real seconds).
+var _jolt := 0.0
 var _pos_prev := Vector3.ZERO
 var _pos_now := Vector3.ZERO
 
@@ -142,6 +153,14 @@ func visual_position() -> Vector3:
 
 func _process(_delta: float) -> void:
 	smooth.global_position = _pos_prev.lerp(_pos_now, Engine.get_physics_interpolation_fraction())
+	if _jolt > 0.0:
+		# Struck bodies shudder in place while the hit-stop holds everyone still.
+		_jolt -= Game.real_delta
+		smooth.global_position += Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)) * 0.04
+
+
+func jolt(seconds: float) -> void:
+	_jolt = maxf(_jolt, seconds)
 
 
 func _build_body() -> void:
@@ -299,7 +318,7 @@ func swing_time() -> float:
 
 
 func recover_time() -> float:
-	return RECOVER_TIME[swing_type] * recover_mult
+	return RECOVER_TIME[swing_type] * recover_mult * (1.3 if swing_heavy else 1.0) * (1.4 if swing_finisher else 1.0)
 
 
 func swing_progress() -> float:
@@ -410,13 +429,16 @@ func _move(delta: float) -> void:
 	var mult := 1.0
 	match state:
 		State.WINDUP: mult = windup_move
-		State.SWING: mult = swing_move
+		State.SWING: mult = swing_move * (0.4 if swing_heavy else 1.0)  # heavies commit you
 		State.RECOVER: mult = recover_move
 		State.STAGGER, State.DODGE: mult = 0.0
 	if guarding:
 		mult *= 0.5
 	var target := move_input.limit_length(1.0) * move_speed * mult
-	move_vel = move_vel.move_toward(target, accel * delta)
+	var rate := accel
+	if target.length() < move_vel.length() or target.dot(move_vel) < 0.0:
+		rate *= brake
+	move_vel = move_vel.move_toward(target, rate * delta)
 	impulse = impulse.lerp(Vector3.ZERO, 1.0 - exp(-7.0 * delta))
 	var v := move_vel + impulse + _lunge_velocity()
 	velocity.x = v.x
@@ -447,8 +469,10 @@ func _check_slam(speed: float) -> void:
 		if c is Fighter and c != self and not c.is_dead():
 			var other := c as Fighter
 			other.take_hit(self, 3.0 + speed, impulse.normalized(), speed * 0.7, 0.45, false)
+			other.jolt(0.1)
 			impulse *= 0.35
-			Game.shake(0.2)
+			Game.hitstop(0.06)
+			Game.shake(0.25)
 			return
 		if c is StaticBody3D and speed > 6.0:
 			impulse *= -0.25
@@ -495,10 +519,13 @@ func set_windup_type(type: Swing) -> void:
 		swing_type = type
 
 
-func release_swing(power: float) -> void:
+func release_swing(power: float, heavy := false, finisher := false) -> void:
 	if state != State.WINDUP:
 		return
 	swing_power = power
+	swing_heavy = heavy
+	swing_finisher = finisher
+	_impact_done = false
 	var cost := (10.0 + 8.0 * power) * (1.3 if swing_type == Swing.OVERHEAD or is_whirl() else 1.0) * stamina_mult
 	stamina = maxf(0.0, stamina - cost)
 	stamina_delay = 0.8
@@ -506,7 +533,7 @@ func release_swing(power: float) -> void:
 	_set_state(State.SWING)
 	_blade_prev = _swing_pose(0.0).y
 	# About as far as the old fading shove carried you, but planted at the end.
-	_step = 0.0 if is_whirl() else (1.5 + 2.5 * power) / 7.0 * (1.7 if swing_type == Swing.THRUST else 1.0) * lunge_mult
+	_step = 0.0 if is_whirl() else (1.5 + 2.5 * power) / 7.0 * (1.7 if swing_type == Swing.THRUST else 1.0) * lunge_mult * (1.25 if heavy else 1.0)
 
 
 func dodge(dir: Vector3) -> bool:
@@ -599,9 +626,11 @@ func _deliver(o: Fighter) -> void:
 	var dir := o.global_position - global_position
 	dir.y = 0.0
 	dir = dir.normalized()
-	var dmg := _strike_damage(o, weapon_damage * swing_power * SWING_DAMAGE[swing_type])
-	var force := (2.5 + 3.5 * swing_power) * (1.5 if swing_type == Swing.OVERHEAD else 1.0) * force_mult
-	var result := o.take_hit(self, dmg, dir, force, 0.2 + 0.35 * swing_power + stun_bonus)
+	var big := swing_heavy or swing_finisher
+	var dmg := _strike_damage(o, weapon_damage * swing_power * SWING_DAMAGE[swing_type] * (1.35 if swing_finisher else 1.0))
+	var force := (2.5 + 3.5 * swing_power) * (1.5 if swing_type == Swing.OVERHEAD else 1.0) * force_mult * (1.4 if big else 1.0)
+	var stun := 0.2 + 0.35 * swing_power + stun_bonus + (0.35 if swing_heavy else 0.0) + (0.3 if swing_finisher else 0.0)
+	var result := o.take_hit(self, dmg, dir, force, stun)
 	_on_strike(o, result)
 	match result:
 		"parried":
@@ -613,8 +642,23 @@ func _deliver(o: Fighter) -> void:
 			impulse -= dir * 1.5
 			Game.hitstop(0.04)
 		"hit":
-			Game.hitstop(0.04 + 0.05 * swing_power)
-			Game.shake(0.2 + 0.25 * swing_power)
+			# Graded impact: a light cut is a flick, a heavy or finisher lands, a
+			# kill or a blow on the hunter is the loudest. One pause per swing.
+			o.jolt(0.14 if big else 0.08)
+			if not _impact_done:
+				_impact_done = true
+				if o.is_dead():
+					Game.hitstop(0.1)
+					Game.shake(0.35)
+				elif o.team == 0:
+					Game.hitstop(0.08)
+					Game.shake(0.3)
+				elif big:
+					Game.hitstop(0.07)
+					Game.shake(0.28)
+				else:
+					Game.hitstop(0.03)
+					Game.shake(0.08)
 
 
 ## Override to change a blow's damage just before it lands (backstabs, ripostes).
@@ -678,7 +722,9 @@ func die(dir: Vector3) -> void:
 # --- animation --------------------------------------------------------------
 
 func _animate(delta: float) -> void:
-	var k := 1.0 - exp(-16.0 * delta)
+	# Recovery eases out slowly, so the follow-through holds and the next cut of
+	# a combo starts from where this one ended.
+	var k := 1.0 - exp(-(6.0 if state == State.RECOVER else 16.0) * delta)
 	var pose := IDLE_POSE
 	var pos := WEAPON_POS
 	match state:

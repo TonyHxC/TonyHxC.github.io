@@ -40,8 +40,9 @@ weapon glows), and the next blow that lands sets it off. It then recharges for 9
 |---|---|
 | WASD | move |
 | Mouse | aim / facing |
-| Hold LMB | wind up (longer = heavier swing, more stamina) |
-| Drag while holding | pick the cut: left/right = slash, down = overhead, up = thrust (whirl with the flail) |
+| Tap LMB | a full-strength cut; taps in rhythm run slash, reverse slash, finisher (the finisher hits harder and staggers longer, then recovers slower) |
+| Hold LMB | charge; release once the weapon flares and rings for a heavy blow (more damage, stagger and shove, but you commit to it) |
+| Drag while holding | pick a particular cut instead: left/right = slash, down = overhead, up = thrust (whirl with the flail) |
 | RMB | guard; raise it just before a hit to **parry** |
 | Space | dodge |
 | E | wake the mask's power; the next blow that lands releases it |
