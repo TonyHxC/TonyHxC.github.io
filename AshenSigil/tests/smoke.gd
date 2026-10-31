@@ -9,6 +9,9 @@ func _ready() -> void:
 	main = preload("res://main.tscn").instantiate()
 	add_child(main)
 	await _frames(5)
+	var canvas: Control = main.hud.glyph
+	_check(canvas.size == get_viewport().get_visible_rect().size,
+		"parchment overlay fills the screen (%s)" % canvas.size)
 	_test_recognizer()
 	await _test_swings()
 	await _test_spells()

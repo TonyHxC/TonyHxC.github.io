@@ -18,7 +18,8 @@ var _paper_rect := Rect2()
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Already in the tree here, so offsets must be reset too or it stays 0x0.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 	Spells.teach(recognizer)
